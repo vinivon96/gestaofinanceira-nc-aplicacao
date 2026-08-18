@@ -1,0 +1,14 @@
+{% if linhas %}
+<table>
+  <tbody>
+  {% for linha in linhas %}
+    <tr class="linha-clicavel" data-fonte="{{ fonte }}" data-chave="{{ linha.chave }}">
+      <td>{{ linha.rotulo }}</td><td class="valor">{{ linha.valor_fmt }}</td>
+    </tr>
+  {% endfor %}
+  <tr class="total"><td>TOTAL</td><td class="valor">{{ fmt_moeda(linhas | sum(attribute="valor")) }}</td></tr>
+  </tbody>
+</table>
+{% else %}
+<p class="vazio">Nenhum registro no período.</p>
+{% endif %}

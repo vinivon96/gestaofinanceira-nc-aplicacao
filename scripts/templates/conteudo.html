@@ -1,0 +1,172 @@
+  <div class="kpi-grid">
+    <div class="kpi-card kpi-receita">
+      <div class="kpi-icone" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 17 9 11 13 15 21 6"></polyline>
+          <polyline points="14 6 21 6 21 13"></polyline>
+        </svg>
+      </div>
+      <div class="kpi-rotulo">Receita Total</div>
+      <div class="kpi-valor">{{ kpi_receita_fmt }}</div>
+    </div>
+
+    <div class="kpi-card kpi-saidas">
+      <div class="kpi-icone" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 7 9 13 13 9 21 18"></polyline>
+          <polyline points="21 11 21 18 14 18"></polyline>
+        </svg>
+      </div>
+      <div class="kpi-rotulo">Saídas Totais</div>
+      <div class="kpi-valor">{{ kpi_saidas_fmt }}</div>
+    </div>
+
+    <div class="kpi-card kpi-margem">
+      <div class="kpi-icone" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="7" cy="7" r="3"></circle>
+          <circle cx="17" cy="17" r="3"></circle>
+          <line x1="6" y1="18" x2="18" y2="6"></line>
+        </svg>
+      </div>
+      <div class="kpi-rotulo">Margem</div>
+      <div class="kpi-valor">{{ kpi_margem_fmt }}</div>
+      <div class="kpi-sub">{{ kpi_margem_pct }}% da receita</div>
+    </div>
+  </div>
+
+  <div class="card card-evolucao">
+    <h2>Evolução mensal</h2>
+    <p class="dica">Últimos {{ evolucao.marcadores | length }} mês(es) com dado disponível no banco.</p>
+    {% if evolucao.marcadores %}
+    <svg class="grafico-linha" viewBox="0 0 {{ evolucao.largura }} {{ evolucao.altura }}" preserveAspectRatio="xMidYMid meet">
+      {% if not evolucao.unico_ponto %}
+      <polyline points="{{ evolucao.linha_entradas }}" fill="none" stroke="#2fd88f" stroke-width="2.5"></polyline>
+      <polyline points="{{ evolucao.linha_saidas }}" fill="none" stroke="#ff7a59" stroke-width="2.5"></polyline>
+      {% endif %}
+      {% for m in evolucao.marcadores %}
+        <circle cx="{{ m.x }}" cy="{{ m.y_entradas }}" r="4" fill="#2fd88f">
+          <title>{{ m.rotulo }} — entradas: {{ m.entradas_fmt }}</title>
+        </circle>
+        <circle cx="{{ m.x }}" cy="{{ m.y_saidas }}" r="4" fill="#ff7a59">
+          <title>{{ m.rotulo }} — saídas: {{ m.saidas_fmt }}</title>
+        </circle>
+        <text x="{{ m.x }}" y="{{ m.y_rotulo }}" class="grafico-linha-rotulo" text-anchor="middle">{{ m.rotulo }}</text>
+      {% endfor %}
+    </svg>
+    <div class="legenda">
+      <span><span class="dot" style="background:#2fd88f;"></span>Entradas</span>
+      <span><span class="dot" style="background:#ff7a59;"></span>Saídas</span>
+    </div>
+    {% else %}
+      <p class="vazio">Nenhum dado disponível ainda.</p>
+    {% endif %}
+  </div>
+
+  <div class="card" style="margin-bottom: 2rem;">
+    <h2>Entradas x saídas por categoria</h2>
+    {% if grafico %}
+      {% for b in grafico %}
+      <div class="barra-linha">
+        <div class="barra-rotulo" title="{{ b.rotulo }}">{{ b.rotulo }}</div>
+        <div class="barra-trilha">
+          <div class="barra-preenchimento {{ b.tipo }}" style="width: {{ b.largura_pct }}%;"></div>
+        </div>
+        <div class="barra-valor">{{ b.valor_fmt }}</div>
+      </div>
+      {% endfor %}
+      <div class="legenda">
+        <span><span class="dot entrada"></span>Entrada</span>
+        <span><span class="dot saida"></span>Saída</span>
+      </div>
+    {% else %}
+      <p class="vazio">Nenhum dado no período.</p>
+    {% endif %}
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Entradas por canal (extrato Inter)</h2>
+      <p class="dica">Clique numa linha pra ver as transações que compõem o total.</p>
+      {% set linhas = entradas %}
+      {% set fonte = "entradas" %}
+      {% include "_tabela.html" %}
+    </div>
+
+    <div class="card">
+      <h2>Saídas por categoria (extrato Inter, sem pagamento de fatura)</h2>
+      <p class="dica">Clique numa linha pra ver as transações que compõem o total.</p>
+      {% set linhas = saidas_extrato %}
+      {% set fonte = "saidas_extrato" %}
+      {% include "_tabela.html" %}
+    </div>
+
+    <div class="card">
+      <h2>Saídas por categoria (dentro da fatura de cartão)</h2>
+      <p class="dica">Clique numa linha pra ver os lançamentos que compõem o total.</p>
+      {% set linhas = saidas_fatura %}
+      {% set fonte = "saidas_fatura" %}
+      {% include "_tabela.html" %}
+    </div>
+
+    <div class="card card-combinada">
+      <h2>Saídas por categoria — visão combinada</h2>
+      <p class="dica">Clique numa linha da tabela pra ver os itens (extrato + fatura) que compõem o total.</p>
+
+      {% if donut_saidas %}
+      <div class="donut-bloco">
+        <svg class="donut-svg" viewBox="0 0 180 180" width="150" height="150">
+          <circle cx="90" cy="90" r="70" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="24"></circle>
+          {% for fatia in donut_saidas %}
+          <circle cx="90" cy="90" r="70" fill="none" stroke="{{ fatia.cor }}" stroke-width="24"
+                  stroke-dasharray="{{ fatia.dasharray }}" stroke-dashoffset="{{ fatia.dashoffset }}"
+                  transform="rotate(-90 90 90)">
+            <title>{{ fatia.rotulo }}: {{ fatia.valor_fmt }} ({{ fatia.pct }}%)</title>
+          </circle>
+          {% endfor %}
+          <text x="90" y="82" text-anchor="middle" class="donut-total-rotulo">Total</text>
+          <text x="90" y="102" text-anchor="middle" class="donut-total-valor">{{ kpi_saidas_fmt }}</text>
+        </svg>
+        <ul class="donut-legenda">
+          {% for fatia in donut_saidas %}
+          <li><span class="dot" style="background:{{ fatia.cor }};"></span>{{ fatia.rotulo }} — {{ fatia.pct }}%</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      {% set linhas = saidas_combinadas %}
+      {% set fonte = "combinada" %}
+      {% include "_tabela.html" %}
+    </div>
+
+    <div class="card">
+      <h2>Top fornecedores/contrapartes (saídas)</h2>
+      <p class="dica">Agrupado por contraparte/descrição exata, não por categoria. Clique numa linha pra ver os lançamentos.</p>
+      {% set linhas = fornecedores %}
+      {% set fonte = "fornecedores" %}
+      {% include "_tabela.html" %}
+    </div>
+
+    <div class="card">
+      <h2>Faturas em aberto (limite/vencimento)</h2>
+      {% if faturas_abertas %}
+      <table>
+        <thead><tr><th>Fatura</th><th>Vencimento</th><th class="valor">Total</th><th class="valor">Limite</th><th class="valor">Disponível</th></tr></thead>
+        <tbody>
+        {% for id_fatura, venc, limite_total, valor_total, limite_disp, parceladas in faturas_abertas %}
+          <tr>
+            <td>{{ id_fatura }}</td>
+            <td>{{ venc }}</td>
+            <td class="valor">{{ fmt_moeda(valor_total) }}</td>
+            <td class="valor">{{ fmt_moeda(limite_total) }}</td>
+            <td class="valor">{{ fmt_moeda(limite_disp) }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+        <p class="vazio">Nenhuma fatura em aberto.</p>
+      {% endif %}
+    </div>
+  </div>

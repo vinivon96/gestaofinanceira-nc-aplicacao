@@ -1,0 +1,23 @@
+# Dashboard financeiro — NC Decorações
+# Uso: docker compose up -d --build   (reconstrói a imagem com o código
+# atual e recria o container — é o comando que o deploy.sh chama).
+#
+# Credenciais vêm de um arquivo .env ao lado deste arquivo (não commitado —
+# ver .env.example). Nunca hardcode DASHBOARD_USER/DASHBOARD_SENHA aqui.
+
+services:
+  dashboard:
+    build: .
+    container_name: nc-dashboard
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT:-5000}:5000"
+    environment:
+      DASHBOARD_ENV: production
+      DASHBOARD_USER: ${DASHBOARD_USER:?defina DASHBOARD_USER no .env}
+      DASHBOARD_SENHA: ${DASHBOARD_SENHA:?defina DASHBOARD_SENHA no .env}
+    volumes:
+      # Persiste o banco real entre rebuilds/restarts — sem isso, cada
+      # `docker compose up --build` voltaria o banco pro estado congelado
+      # na imagem (o db/financeiro.db copiado no Dockerfile).
+      - ./db:/app/db
