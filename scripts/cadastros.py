@@ -75,3 +75,38 @@ def mapa_cartoes_por_final(conn: sqlite3.Connection) -> dict[str, tuple[str, str
         final_cartao: (banco, apelido)
         for _id, banco, apelido, final_cartao, _fech, _venc, _ativo in listar_cartoes(conn)
     }
+
+
+def linhas_unificadas_cadastros(conn: sqlite3.Connection) -> list[dict]:
+    """Combina listar_contas_bancarias e listar_cartoes num formato único de
+    linha, pra tela /importar mostrar os dois cadastros de referência numa
+    tabela só (mesmo racional do redesign de /compromissos — ver spec seção
+    16). Não reimplementa nenhuma consulta: só reformata o que essas duas
+    funções já devolvem. Formatação de exibição fica em dashboard.py."""
+    linhas = []
+
+    for id_, banco, agencia, numero_conta, apelido, _ativa in listar_contas_bancarias(conn):
+        linhas.append({
+            "tipo": "conta_bancaria",
+            "id": id_,
+            "banco": banco,
+            "apelido": apelido,
+            "detalhe": f"Ag. {agencia or '—'} / Conta {numero_conta or '—'}",
+            "final_cartao": None,
+            "fechamento": None,
+            "vencimento": None,
+        })
+
+    for id_, banco, apelido, final_cartao, dia_fechamento, dia_vencimento, _ativo in listar_cartoes(conn):
+        linhas.append({
+            "tipo": "cartao",
+            "id": id_,
+            "banco": banco,
+            "apelido": apelido,
+            "detalhe": f"****{final_cartao}",
+            "final_cartao": final_cartao,
+            "fechamento": f"Dia {dia_fechamento}" if dia_fechamento else None,
+            "vencimento": f"Dia {dia_vencimento}" if dia_vencimento else None,
+        })
+
+    return linhas

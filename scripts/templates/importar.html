@@ -24,131 +24,207 @@
     {% endif %}
   {% endwith %}
 
-  <div class="grid">
-    <div class="card">
-      <h2>Importar extrato bancário</h2>
-      <p class="dica">Aceita .csv ou .xlsx no formato do Banco Inter. Depois de salvo, o motor de classificação e o vínculo de pagamento de fatura/dívida rodam automaticamente — pode levar alguns segundos.</p>
-      <form class="form-cadastro" method="post" action="{{ url_for('importar_extrato_rota') }}" enctype="multipart/form-data">
-        <label class="campo-descricao">Arquivo
-          <input type="file" name="arquivo" accept=".csv,.xlsx" required>
-        </label>
-        <button type="submit">Importar extrato</button>
-      </form>
-    </div>
-
-    <div class="card">
-      <h2>Importar fatura de cartão</h2>
-      <p class="dica">Aceita .pdf. Se a fatura for protegida por senha e a variável de ambiente FATURA_CARTAO_SENHA não estiver definida no servidor, informe a senha abaixo (usada só nesta importação, não é salva).</p>
-      <form class="form-cadastro" method="post" action="{{ url_for('importar_fatura_rota') }}" enctype="multipart/form-data">
-        <label class="campo-descricao">Arquivo
-          <input type="file" name="arquivo" accept=".pdf" required>
-        </label>
-        <label>Senha do PDF (se necessário)
-          <input type="password" name="senha" autocomplete="off">
-        </label>
-        <button type="submit">Importar fatura</button>
-      </form>
-    </div>
-
-    <div class="card">
-      <h2>Contas bancárias cadastradas</h2>
-      <p class="dica">Cadastro de referência (banco, agência, conta) — não interfere na importação do extrato, é só pra dar contexto nas telas.</p>
-      {% if contas_bancarias %}
-      <div class="tabela-scroll">
-      <table>
-        <thead>
-          <tr><th>Banco</th><th>Agência</th><th>Conta</th><th>Apelido</th><th>Ação</th></tr>
-        </thead>
-        <tbody>
-        {% for c in contas_bancarias %}
-          <tr>
-            <td>{{ c.banco }}</td>
-            <td>{{ c.agencia or '—' }}</td>
-            <td>{{ c.numero_conta or '—' }}</td>
-            <td>{{ c.apelido or '—' }}</td>
-            <td>
-              <form class="form-inline" method="post" action="{{ url_for('excluir_conta_bancaria_rota', id=c.id) }}"
-                    onsubmit="return confirm('Excluir esta conta bancária do cadastro?');">
-                <button type="submit" class="btn-perigo">Excluir</button>
-              </form>
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      </div>
-      {% else %}
-        <p class="vazio">Nenhuma conta bancária cadastrada.</p>
-      {% endif %}
-
-      <form class="form-cadastro" method="post" action="{{ url_for('criar_conta_bancaria_rota') }}">
-        <label class="campo-descricao">Banco
-          <input type="text" name="banco" placeholder="ex: Banco Inter" required>
-        </label>
-        <label>Agência
-          <input type="text" name="agencia" placeholder="0001">
-        </label>
-        <label>Conta
-          <input type="text" name="numero_conta" placeholder="123456-7">
-        </label>
-        <label class="campo-descricao">Apelido
-          <input type="text" name="apelido" placeholder="ex: Conta PJ principal">
-        </label>
-        <button type="submit">+ Nova conta bancária</button>
-      </form>
-    </div>
-
-    <div class="card">
-      <h2>Cartões cadastrados</h2>
-      <p class="dica">Cadastro de referência (banco, final do cartão, dia de fechamento/vencimento habituais) — usado só para exibir um rótulo amigável nas telas de fatura e parcelamento, não substitui os dados reais de cada fatura importada.</p>
-      {% if cartoes %}
-      <div class="tabela-scroll">
-      <table>
-        <thead>
-          <tr><th>Banco</th><th>Apelido</th><th>Final</th><th>Fechamento</th><th>Vencimento</th><th>Ação</th></tr>
-        </thead>
-        <tbody>
-        {% for c in cartoes %}
-          <tr>
-            <td>{{ c.banco }}</td>
-            <td>{{ c.apelido or '—' }}</td>
-            <td>****{{ c.final_cartao }}</td>
-            <td>{{ 'Dia ' ~ c.dia_fechamento if c.dia_fechamento else '—' }}</td>
-            <td>{{ 'Dia ' ~ c.dia_vencimento if c.dia_vencimento else '—' }}</td>
-            <td>
-              <form class="form-inline" method="post" action="{{ url_for('excluir_cartao_rota', id=c.id) }}"
-                    onsubmit="return confirm('Excluir este cartão do cadastro?');">
-                <button type="submit" class="btn-perigo">Excluir</button>
-              </form>
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      </div>
-      {% else %}
-        <p class="vazio">Nenhum cartão cadastrado.</p>
-      {% endif %}
-
-      <form class="form-cadastro" method="post" action="{{ url_for('criar_cartao_rota') }}">
-        <label class="campo-descricao">Banco
-          <input type="text" name="banco" placeholder="ex: Mercado Pago" required>
-        </label>
-        <label class="campo-descricao">Apelido
-          <input type="text" name="apelido" placeholder="ex: Ferramentas/SaaS">
-        </label>
-        <label>Final do cartão
-          <input type="text" name="final_cartao" maxlength="4" placeholder="7111" required>
-        </label>
-        <label>Dia de fechamento
-          <input type="number" min="1" max="31" name="dia_fechamento">
-        </label>
-        <label>Dia de vencimento
-          <input type="number" min="1" max="31" name="dia_vencimento">
-        </label>
-        <button type="submit">+ Novo cartão</button>
-      </form>
+  <div class="compromissos-topo">
+    <p class="dica" style="margin: 0;">Envio de arquivo e novos cadastros ficam nos painéis laterais.</p>
+    <div class="botoes-novo">
+      <button type="button" class="btn-abrir-drawer" onclick="abrirDrawer('drawer-extrato')">+ Importar extrato</button>
+      <button type="button" class="btn-abrir-drawer" onclick="abrirDrawer('drawer-fatura')">+ Importar fatura</button>
+      <button type="button" class="btn-abrir-drawer" onclick="abrirDrawer('drawer-conta-bancaria')">+ Nova conta bancária</button>
+      <button type="button" class="btn-abrir-drawer" onclick="abrirDrawer('drawer-cartao')">+ Novo cartão</button>
     </div>
   </div>
+
+  <div class="card card-filtros">
+    <div class="filtros-grid">
+      <label>Tipo
+        <select id="filtro-tipo-cadastro" onchange="aplicarFiltrosCadastros()">
+          <option value="">Todos</option>
+          <option value="conta_bancaria">Conta bancária</option>
+          <option value="cartao">Cartão</option>
+        </select>
+      </label>
+      <label>Banco / apelido
+        <input type="text" id="filtro-nome-cadastro" placeholder="buscar..." oninput="aplicarFiltrosCadastros()">
+      </label>
+      <label>Final do cartão
+        <input type="text" id="filtro-final-cartao" maxlength="4" placeholder="1234 (só cartão)" oninput="aplicarFiltrosCadastros()">
+      </label>
+      <div class="filtros-acoes">
+        <button type="button" onclick="aplicarFiltrosCadastros()">Aplicar</button>
+        <button type="button" onclick="limparFiltrosCadastros()">Limpar filtros</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card card-compromissos">
+    <h2>Contas e cartões cadastrados</h2>
+    <p class="dica">Cadastro de referência — não interfere na importação em si, é só pra dar contexto (rótulos amigáveis) nas outras telas.</p>
+    {% if linhas %}
+    <div class="tabela-scroll">
+    <table id="tabela-cadastros">
+      <thead>
+        <tr><th>Tipo</th><th>Banco</th><th>Detalhe</th><th>Apelido</th><th>Fechamento</th><th>Vencimento</th><th>Ação</th></tr>
+      </thead>
+      <tbody>
+      {% for linha in linhas %}
+        <tr data-tipo="{{ linha.tipo }}" data-nome="{{ (linha.banco ~ ' ' ~ (linha.apelido or ''))|lower }}"
+            data-cartao="{{ (linha.final_cartao or '')|lower }}">
+          <td>{{ linha.tipo_rotulo }}</td>
+          <td>{{ linha.banco }}</td>
+          <td>{{ linha.detalhe }}</td>
+          <td>{{ linha.apelido or '—' }}</td>
+          <td>{{ linha.fechamento or '—' }}</td>
+          <td>{{ linha.vencimento or '—' }}</td>
+          <td>
+            {% if linha.tipo == 'conta_bancaria' %}
+            <form class="form-inline" method="post" action="{{ url_for('excluir_conta_bancaria_rota', id=linha.id) }}"
+                  onsubmit="return confirm('Excluir esta conta bancária do cadastro?');">
+              <button type="submit" class="btn-perigo">Excluir</button>
+            </form>
+            {% else %}
+            <form class="form-inline" method="post" action="{{ url_for('excluir_cartao_rota', id=linha.id) }}"
+                  onsubmit="return confirm('Excluir este cartão do cadastro?');">
+              <button type="submit" class="btn-perigo">Excluir</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="vazio" id="filtro-sem-resultado-cadastros" style="display:none;">Nenhum cadastro para os filtros aplicados.</p>
+    {% else %}
+      <p class="vazio">Nenhuma conta bancária ou cartão cadastrado ainda.</p>
+    {% endif %}
+  </div>
+
+  <div class="drawer-overlay" id="drawer-overlay" onclick="fecharDrawers()"></div>
+
+  <aside class="drawer" id="drawer-extrato">
+    <div class="drawer-cabecalho">
+      <h2>Importar extrato bancário</h2>
+      <button type="button" class="drawer-fechar" onclick="fecharDrawers()" aria-label="Fechar">&times;</button>
+    </div>
+    <p class="dica">Aceita .csv ou .xlsx no formato do Banco Inter. Depois de salvo, o motor de classificação e o vínculo de pagamento de fatura/dívida rodam automaticamente — pode levar alguns segundos.</p>
+    <form class="form-cadastro form-drawer" method="post" action="{{ url_for('importar_extrato_rota') }}" enctype="multipart/form-data">
+      <label class="campo-descricao">Arquivo
+        <input type="file" name="arquivo" accept=".csv,.xlsx" required>
+      </label>
+      <button type="submit">Importar extrato</button>
+    </form>
+  </aside>
+
+  <aside class="drawer" id="drawer-fatura">
+    <div class="drawer-cabecalho">
+      <h2>Importar fatura de cartão</h2>
+      <button type="button" class="drawer-fechar" onclick="fecharDrawers()" aria-label="Fechar">&times;</button>
+    </div>
+    <p class="dica">Aceita .pdf. Se a fatura for protegida por senha e a variável de ambiente FATURA_CARTAO_SENHA não estiver definida no servidor, informe a senha abaixo (usada só nesta importação, não é salva).</p>
+    <form class="form-cadastro form-drawer" method="post" action="{{ url_for('importar_fatura_rota') }}" enctype="multipart/form-data">
+      <label class="campo-descricao">Arquivo
+        <input type="file" name="arquivo" accept=".pdf" required>
+      </label>
+      <label>Senha do PDF (se necessário)
+        <input type="password" name="senha" autocomplete="off">
+      </label>
+      <button type="submit">Importar fatura</button>
+    </form>
+  </aside>
+
+  <aside class="drawer" id="drawer-conta-bancaria">
+    <div class="drawer-cabecalho">
+      <h2>Nova conta bancária</h2>
+      <button type="button" class="drawer-fechar" onclick="fecharDrawers()" aria-label="Fechar">&times;</button>
+    </div>
+    <form class="form-cadastro form-drawer" method="post" action="{{ url_for('criar_conta_bancaria_rota') }}">
+      <label class="campo-descricao">Banco
+        <input type="text" name="banco" placeholder="ex: Banco Inter" required>
+      </label>
+      <label>Agência
+        <input type="text" name="agencia" placeholder="0001">
+      </label>
+      <label>Conta
+        <input type="text" name="numero_conta" placeholder="123456-7">
+      </label>
+      <label class="campo-descricao">Apelido
+        <input type="text" name="apelido" placeholder="ex: Conta PJ principal">
+      </label>
+      <button type="submit">+ Nova conta bancária</button>
+    </form>
+  </aside>
+
+  <aside class="drawer" id="drawer-cartao">
+    <div class="drawer-cabecalho">
+      <h2>Novo cartão</h2>
+      <button type="button" class="drawer-fechar" onclick="fecharDrawers()" aria-label="Fechar">&times;</button>
+    </div>
+    <form class="form-cadastro form-drawer" method="post" action="{{ url_for('criar_cartao_rota') }}">
+      <label class="campo-descricao">Banco
+        <input type="text" name="banco" placeholder="ex: Mercado Pago" required>
+      </label>
+      <label class="campo-descricao">Apelido
+        <input type="text" name="apelido" placeholder="ex: Ferramentas/SaaS">
+      </label>
+      <label>Final do cartão
+        <input type="text" name="final_cartao" maxlength="4" placeholder="7111" required>
+      </label>
+      <label>Dia de fechamento
+        <input type="number" min="1" max="31" name="dia_fechamento">
+      </label>
+      <label>Dia de vencimento
+        <input type="number" min="1" max="31" name="dia_vencimento">
+      </label>
+      <button type="submit">+ Novo cartão</button>
+    </form>
+  </aside>
+
+  <script>
+    function aplicarFiltrosCadastros() {
+      var tipo = document.getElementById('filtro-tipo-cadastro').value;
+      var nome = document.getElementById('filtro-nome-cadastro').value.trim().toLowerCase();
+      var cartao = document.getElementById('filtro-final-cartao').value.trim().toLowerCase();
+
+      var linhas = document.querySelectorAll('#tabela-cadastros tbody tr');
+      var visiveis = 0;
+
+      linhas.forEach(function (linha) {
+        var linhaTipo = linha.dataset.tipo;
+        var ok = true;
+
+        if (tipo && linhaTipo !== tipo) ok = false;
+        if (ok && nome && linha.dataset.nome.indexOf(nome) === -1) ok = false;
+        // Final do cartão só se aplica a cartões — não esconde contas bancárias.
+        if (ok && linhaTipo === 'cartao' && cartao && linha.dataset.cartao.indexOf(cartao) === -1) ok = false;
+
+        linha.style.display = ok ? '' : 'none';
+        if (ok) visiveis++;
+      });
+
+      var aviso = document.getElementById('filtro-sem-resultado-cadastros');
+      if (aviso) aviso.style.display = (linhas.length > 0 && visiveis === 0) ? '' : 'none';
+    }
+
+    function limparFiltrosCadastros() {
+      document.getElementById('filtro-tipo-cadastro').value = '';
+      document.getElementById('filtro-nome-cadastro').value = '';
+      document.getElementById('filtro-final-cartao').value = '';
+      aplicarFiltrosCadastros();
+    }
+
+    function abrirDrawer(id) {
+      document.getElementById(id).classList.add('aberto');
+      document.getElementById('drawer-overlay').classList.add('aberto');
+    }
+
+    function fecharDrawers() {
+      document.querySelectorAll('.drawer.aberto').forEach(function (d) { d.classList.remove('aberto'); });
+      document.getElementById('drawer-overlay').classList.remove('aberto');
+    }
+
+    document.addEventListener('keydown', function (evento) {
+      if (evento.key === 'Escape') fecharDrawers();
+    });
+  </script>
 </body>
 </html>

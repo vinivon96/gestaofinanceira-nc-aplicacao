@@ -660,21 +660,23 @@ def atualizar_vencimento_divida_rota(id_divida: str):
     return redirect(url_for("compromissos"))
 
 
+TIPO_CADASTRO_ROTULO = {"conta_bancaria": "Conta bancária", "cartao": "Cartão"}
+
+
+def montar_contexto_importar(conn: sqlite3.Connection) -> dict:
+    linhas = [
+        {**linha, "tipo_rotulo": TIPO_CADASTRO_ROTULO[linha["tipo"]]}
+        for linha in cadastros.linhas_unificadas_cadastros(conn)
+    ]
+    return {"linhas": linhas}
+
+
 @app.route("/importar", endpoint="importar")
 def pagina_importar():
     conn = sqlite3.connect(DEFAULT_DB_PATH)
     try:
-        contas = [
-            {"id": id_, "banco": banco, "agencia": agencia, "numero_conta": numero_conta,
-             "apelido": apelido, "ativa": bool(ativa)}
-            for id_, banco, agencia, numero_conta, apelido, ativa in cadastros.listar_contas_bancarias(conn)
-        ]
-        cartoes = [
-            {"id": id_, "banco": banco, "apelido": apelido, "final_cartao": final_cartao,
-             "dia_fechamento": dia_fechamento, "dia_vencimento": dia_vencimento, "ativo": bool(ativo)}
-            for id_, banco, apelido, final_cartao, dia_fechamento, dia_vencimento, ativo in cadastros.listar_cartoes(conn)
-        ]
-        return render_template("importar.html", contas_bancarias=contas, cartoes=cartoes)
+        contexto = montar_contexto_importar(conn)
+        return render_template("importar.html", **contexto)
     finally:
         conn.close()
 
