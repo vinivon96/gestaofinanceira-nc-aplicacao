@@ -21,6 +21,7 @@ INSERT OR IGNORE INTO plano_de_contas (codigo, categoria, tipo) VALUES
     ('maquininha_adquirente',     'Maquininha/adquirente',           'despesa'),
     ('outras_despesas',           'Outras despesas',                 'despesa'),
     ('pagamento_fatura',          'Pagamento de fatura',             'movimentacao_interna'),
+    ('pagamento_divida',          'Pagamento de dívida',             'movimentacao_interna'),
 
     ('transferencia_entre_contas', 'Transferência entre contas próprias', 'movimentacao_interna'),
 

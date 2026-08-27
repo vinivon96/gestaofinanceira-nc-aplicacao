@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # Importa todo o histórico disponível: todos os CSVs e XLSXs de
-# dbextratos_reais/ e todos os PDFs de faturas_reais/, depois roda classificar.py e
-# vincular_pagamento_fatura.py UMA VEZ cada (eles reprocessam o banco
-# inteiro, então rodar por arquivo seria redundante e mais lento).
+# dbextratos_reais/ e todos os PDFs de faturas_reais/, depois roda classificar.py,
+# vincular_pagamento_fatura.py e vincular_pagamento_divida.py UMA VEZ cada
+# (eles reprocessam o banco inteiro, então rodar por arquivo seria redundante
+# e mais lento).
 #
 # Idempotente: os parsers usam INSERT OR IGNORE / UPSERT por chave primária
 # (id_transacao, id_lancamento, id_fatura), então rodar de novo com arquivos
 # já importados misturados com novos não duplica nada — só o que for novo
-# entra. classificar.py só toca registros com categoria IS NULL, e
-# vincular_pagamento_fatura.py só liga faturas ainda sem transação vinculada.
+# entra. classificar.py só toca registros com categoria IS NULL,
+# vincular_pagamento_fatura.py só liga faturas ainda sem transação vinculada,
+# e vincular_pagamento_divida.py só liga dívidas ainda sem transação vinculada.
 #
 # Uso:
 #   ./scripts/importar_historico.sh [caminho_do_banco]
@@ -50,7 +52,7 @@ echo
 transacoes_antes=$(contar transacoes)
 lancamentos_antes=$(contar lancamentos_fatura)
 
-echo "--- 1/4: Extratos Inter (CSV/XLSX) em $DIR_EXTRATOS/ ---"
+echo "--- 1/5: Extratos Inter (CSV/XLSX) em $DIR_EXTRATOS/ ---"
 shopt -s nullglob
 extratos=("$DIR_EXTRATOS"/*.csv "$DIR_EXTRATOS"/*.xlsx)
 outros=("$DIR_EXTRATOS"/*)
@@ -77,7 +79,7 @@ for arquivo in "${outros[@]}"; do
 done
 
 echo
-echo "--- 2/4: Faturas de cartão (PDF) em $DIR_FATURAS/ ---"
+echo "--- 2/5: Faturas de cartão (PDF) em $DIR_FATURAS/ ---"
 shopt -s nullglob
 pdfs=("$DIR_FATURAS"/*.pdf)
 shopt -u nullglob
@@ -95,12 +97,16 @@ else
 fi
 
 echo
-echo "--- 3/4: Motor de classificação (roda uma vez sobre o banco inteiro) ---"
+echo "--- 3/5: Motor de classificação (roda uma vez sobre o banco inteiro) ---"
 "$PYTHON" scripts/classificar.py "$DB_PATH"
 
 echo
-echo "--- 4/4: Vínculo de pagamento de fatura (roda uma vez) ---"
+echo "--- 4/5: Vínculo de pagamento de fatura (roda uma vez) ---"
 "$PYTHON" scripts/vincular_pagamento_fatura.py "$DB_PATH"
+
+echo
+echo "--- 5/5: Vínculo de pagamento de dívida (roda uma vez) ---"
+"$PYTHON" scripts/vincular_pagamento_divida.py "$DB_PATH"
 
 transacoes_depois=$(contar transacoes)
 lancamentos_depois=$(contar lancamentos_fatura)

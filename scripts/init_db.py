@@ -16,10 +16,21 @@ SEED_PATHS = [
 DEFAULT_DB_PATH = ROOT / "db" / "financeiro.db"
 
 
+def _garantir_coluna(conn: sqlite3.Connection, tabela: str, coluna: str, definicao_sql: str) -> None:
+    """Adiciona uma coluna a uma tabela já existente, se ainda não existir.
+    `CREATE TABLE IF NOT EXISTS` não altera tabelas já criadas, então bancos
+    antigos (como o de produção) precisam desse shim pra ganhar colunas
+    novas sem perder dado — rodar de novo é seguro (coluna já existe, pula)."""
+    colunas = {linha[1] for linha in conn.execute(f"PRAGMA table_info({tabela})")}
+    if coluna not in colunas:
+        conn.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {definicao_sql}")
+
+
 def init_db(db_path: Path) -> None:
     conn = sqlite3.connect(db_path)
     try:
         conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+        _garantir_coluna(conn, "transacoes", "id_divida", "TEXT REFERENCES dividas(id_divida)")
         for seed_path in SEED_PATHS:
             conn.executescript(seed_path.read_text(encoding="utf-8"))
         conn.commit()

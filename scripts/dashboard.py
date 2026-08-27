@@ -36,8 +36,9 @@ import sqlite3
 from datetime import date
 from pathlib import Path
 
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, jsonify, redirect, render_template, request, url_for
 
+import compromissos
 from relatorio import (
     DEFAULT_DB_PATH,
     buscar_por_termo,
@@ -144,6 +145,13 @@ def montar_grafico(entradas: list[dict], saidas_combinadas: list[dict]) -> list[
         b["largura_pct"] = round(b["valor"] / maximo * 100, 1) if maximo else 0
         b["valor_fmt"] = fmt_moeda(b["valor"])
     return barras
+
+
+def categorias_para_select(categorias: dict[str, str]) -> list[tuple[str, str]]:
+    return sorted(
+        ((codigo, nome) for codigo, nome in categorias.items() if codigo != "revisar_manual"),
+        key=lambda item: item[1],
+    )
 
 
 def rotulo_mes(mes: str) -> str:
@@ -256,10 +264,7 @@ def montar_contexto(conn: sqlite3.Connection, inicio: str, fim: str) -> dict:
         "fornecedores": fornecedores,
         "faturas_abertas": faturas_em_aberto(conn),
         "fmt_moeda": fmt_moeda,
-        "categorias_lista": sorted(
-            ((codigo, nome) for codigo, nome in categorias.items() if codigo != "revisar_manual"),
-            key=lambda item: item[1],
-        ),
+        "categorias_lista": categorias_para_select(categorias),
         "kpi_receita": total_receita,
         "kpi_receita_fmt": fmt_moeda(total_receita),
         "kpi_saidas": total_saidas,
@@ -454,6 +459,217 @@ def reclassificar():
         })
     finally:
         conn.close()
+
+
+STATUS_CONTA_ROTULO = {"pendente": "Pendente", "paga": "Paga", "pulada": "Pulada"}
+
+
+def montar_contexto_compromissos(conn: sqlite3.Connection, mes: str) -> dict:
+    categorias = nomes_categorias(conn)
+
+    contas = []
+    for id_, nome, categoria, valor_esperado, dia_vencimento, status, valor_pago, data_pagamento in (
+        compromissos.contas_recorrentes_do_mes(conn, mes)
+    ):
+        contas.append({
+            "id": id_,
+            "nome": nome,
+            "categoria_nome": categorias.get(categoria, categoria) if categoria else "(sem categoria)",
+            "valor_esperado": valor_esperado,
+            "valor_esperado_fmt": fmt_moeda(valor_esperado),
+            "dia_vencimento": dia_vencimento,
+            "status": status,
+            "valor_pago": valor_pago,
+            "status_rotulo": STATUS_CONTA_ROTULO.get(status, status),
+        })
+
+    total_esperado = sum(c["valor_esperado"] for c in contas)
+    total_pago = sum(c["valor_pago"] or 0 for c in contas if c["status"] == "paga")
+    total_pendente = sum(c["valor_esperado"] for c in contas if c["status"] == "pendente")
+    totais_contas = {
+        "esperado_fmt": fmt_moeda(total_esperado),
+        "pago_fmt": fmt_moeda(total_pago),
+        "pendente_fmt": fmt_moeda(total_pendente),
+    }
+
+    parcelamentos = [
+        {**p, "valor_parcela_fmt": fmt_moeda(p["valor_parcela"]), "restante_fmt": fmt_moeda(p["restante"])}
+        for p in compromissos.parcelamentos_em_andamento(conn, mes)
+    ]
+
+    dividas = []
+    for id_divida, credor, descricao, categoria, valor_parcela, parcelas_restantes, data_vencimento_proxima in (
+        compromissos.dividas_em_aberto(conn)
+    ):
+        dividas.append({
+            "id_divida": id_divida,
+            "credor": credor,
+            "descricao": descricao,
+            "categoria_nome": categorias.get(categoria, categoria) if categoria else "(sem categoria)",
+            "valor_parcela_fmt": fmt_moeda(valor_parcela),
+            "parcelas_restantes": parcelas_restantes,
+            "data_vencimento_proxima": data_vencimento_proxima,
+            "saldo_devedor_fmt": fmt_moeda(valor_parcela * parcelas_restantes),
+        })
+
+    prospeccao = [
+        {**linha, "recorrentes_fmt": fmt_moeda(linha["recorrentes"]), "parcelamentos_fmt": fmt_moeda(linha["parcelamentos"]),
+         "dividas_fmt": fmt_moeda(linha["dividas"]), "total_fmt": fmt_moeda(linha["total"])}
+        for linha in compromissos.prospeccao_custo_fixo(conn, mes)
+    ]
+
+    return {
+        "mes": mes,
+        "contas": contas,
+        "totais_contas": totais_contas,
+        "parcelamentos": parcelamentos,
+        "dividas": dividas,
+        "prospeccao": prospeccao,
+        "categorias_lista": categorias_para_select(categorias),
+    }
+
+
+@app.route("/compromissos", endpoint="compromissos")
+def pagina_compromissos():
+    db_path = Path(request.args.get("db", str(DEFAULT_DB_PATH)))
+    mes = request.args.get("mes") or date.today().strftime("%Y-%m")
+
+    conn = sqlite3.connect(db_path)
+    try:
+        contexto = montar_contexto_compromissos(conn, mes)
+        return render_template("compromissos.html", **contexto)
+    finally:
+        conn.close()
+
+
+@app.route("/contas_recorrentes", methods=["POST"], endpoint="criar_conta_recorrente_rota")
+def criar_conta_recorrente_rota():
+    form = request.form
+    conn = sqlite3.connect(DEFAULT_DB_PATH)
+    try:
+        compromissos.criar_conta_recorrente(
+            conn, form["nome"], form.get("categoria") or None, float(form["valor_esperado"]),
+            int(form["dia_vencimento"]), form.get("observacao", ""),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect(url_for("compromissos"))
+
+
+@app.route("/contas_recorrentes/<int:id>/marcar", methods=["POST"], endpoint="marcar_conta_recorrente")
+def marcar_conta_recorrente(id: int):
+    form = request.form
+    mes = form.get("mes") or date.today().strftime("%Y-%m")
+    status = form.get("status", "paga")
+    valor_pago = form.get("valor_pago") or None
+
+    conn = sqlite3.connect(DEFAULT_DB_PATH)
+    try:
+        compromissos.marcar_ocorrencia(
+            conn, id, mes, status, float(valor_pago) if valor_pago else None, date.today().isoformat(),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect(url_for("compromissos", mes=mes))
+
+
+@app.route("/contas_recorrentes/<int:id>/desmarcar", methods=["POST"], endpoint="desmarcar_conta_recorrente")
+def desmarcar_conta_recorrente(id: int):
+    mes = request.form.get("mes") or date.today().strftime("%Y-%m")
+
+    conn = sqlite3.connect(DEFAULT_DB_PATH)
+    try:
+        compromissos.desmarcar_ocorrencia(conn, id, mes)
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect(url_for("compromissos", mes=mes))
+
+
+@app.route("/contas_recorrentes/<int:id>/excluir", methods=["POST"], endpoint="excluir_conta_recorrente_rota")
+def excluir_conta_recorrente_rota(id: int):
+    conn = sqlite3.connect(DEFAULT_DB_PATH)
+    try:
+        compromissos.excluir_conta_recorrente(conn, id)
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect(url_for("compromissos"))
+
+
+@app.route(
+    "/contas_recorrentes/<int:id>/remover_periodo", methods=["POST"], endpoint="remover_periodo_conta_recorrente_rota"
+)
+def remover_periodo_conta_recorrente_rota(id: int):
+    form = request.form
+    mes = form.get("mes") or date.today().strftime("%Y-%m")
+
+    conn = sqlite3.connect(DEFAULT_DB_PATH)
+    try:
+        compromissos.remover_ocorrencias_periodo(conn, id, form["competencia_inicio"], form["competencia_fim"])
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect(url_for("compromissos", mes=mes))
+
+
+@app.route("/parcelamentos", methods=["POST"], endpoint="criar_parcelamento_rota")
+def criar_parcelamento_rota():
+    form = request.form
+    conn = sqlite3.connect(DEFAULT_DB_PATH)
+    try:
+        compromissos.criar_parcelamento(
+            conn, form["descricao"], float(form["valor_parcela"]), int(form["parcela_atual"]),
+            int(form["parcela_total"]), form.get("cartao_final", ""), form.get("categoria") or None,
+            form.get("observacao", ""),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect(url_for("compromissos"))
+
+
+@app.route("/parcelamentos/<int:id>/encerrar", methods=["POST"], endpoint="encerrar_parcelamento_rota")
+def encerrar_parcelamento_rota(id: int):
+    conn = sqlite3.connect(DEFAULT_DB_PATH)
+    try:
+        compromissos.encerrar_parcelamento(conn, id)
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect(url_for("compromissos"))
+
+
+@app.route("/dividas", methods=["POST"], endpoint="criar_divida_rota")
+def criar_divida_rota():
+    form = request.form
+    conn = sqlite3.connect(DEFAULT_DB_PATH)
+    try:
+        compromissos.criar_divida(
+            conn, form["credor"], form.get("descricao", ""), float(form["valor_parcela"]),
+            int(form["parcelas_restantes"]), form.get("data_vencimento_proxima") or None,
+            form.get("categoria") or None, form.get("observacao", ""),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect(url_for("compromissos"))
+
+
+@app.route(
+    "/dividas/<id_divida>/atualizar_vencimento", methods=["POST"], endpoint="atualizar_vencimento_divida_rota"
+)
+def atualizar_vencimento_divida_rota(id_divida: str):
+    nova_data = request.form.get("data_vencimento_proxima") or None
+    conn = sqlite3.connect(DEFAULT_DB_PATH)
+    try:
+        compromissos.atualizar_vencimento_divida(conn, id_divida, nova_data)
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect(url_for("compromissos"))
 
 
 if __name__ == "__main__":
