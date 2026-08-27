@@ -217,3 +217,61 @@ form.form-inline button {
 form.form-inline button.btn-primario {
   background: linear-gradient(135deg, #4895ef, #7c5cfc); color: #fff; font-weight: 600;
 }
+
+/* Tela /compromissos redesenhada — barra de filtros + tabela única + drawers */
+.compromissos-topo {
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;
+  gap: 0.75rem; margin-bottom: 0.75rem;
+}
+.botoes-novo { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.btn-abrir-drawer {
+  padding: 0.4rem 0.9rem; border-radius: 6px; border: none; cursor: pointer;
+  background: linear-gradient(135deg, #4895ef, #7c5cfc); color: #fff; font-weight: 600; font-size: 0.85rem;
+}
+
+.card-filtros { margin-bottom: 1.25rem; }
+.filtros-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.75rem; align-items: end;
+}
+.filtros-grid label {
+  display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.78rem; color: var(--texto-fraco);
+}
+.filtros-grid input, .filtros-grid select {
+  padding: 0.4rem 0.5rem; background: var(--bg-panel-2); color: var(--texto);
+  border: 1px solid var(--borda); border-radius: 6px; font-size: 0.85rem;
+}
+.filtros-acoes { display: flex; gap: 0.5rem; align-items: end; }
+.filtros-acoes button {
+  padding: 0.42rem 0.9rem; border-radius: 6px; border: none; cursor: pointer; font-size: 0.85rem;
+  background: rgba(255,255,255,0.08); color: var(--texto);
+}
+
+.card-compromissos { margin-bottom: 1.5rem; }
+
+.drawer-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  opacity: 0; pointer-events: none; transition: opacity 0.2s ease; z-index: 40;
+}
+.drawer-overlay.aberto { opacity: 1; pointer-events: auto; }
+
+.drawer {
+  position: fixed; top: 0; right: 0; height: 100vh; width: min(420px, 92vw);
+  background: linear-gradient(160deg, var(--bg-panel), var(--bg-panel-2));
+  border-left: 1px solid var(--borda); box-shadow: -20px 0 40px -20px rgba(0,0,0,0.6);
+  transform: translateX(100%); transition: transform 0.25s ease; z-index: 50;
+  padding: 1.25rem 1.4rem; overflow-y: auto;
+}
+.drawer.aberto { transform: translateX(0); }
+
+.drawer-cabecalho { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+.drawer-cabecalho h2 { margin: 0; font-size: 1.05rem; }
+.drawer-fechar {
+  background: none; border: none; color: var(--texto-fraco); font-size: 1.4rem; cursor: pointer; line-height: 1;
+  padding: 0.1rem 0.4rem;
+}
+.drawer-fechar:hover { color: var(--texto); }
+
+form.form-drawer { flex-direction: column; align-items: stretch; border-top: none; padding-top: 0; margin-top: 0; }
+form.form-drawer .campo-descricao { flex: none; }
+form.form-drawer input, form.form-drawer select { width: 100%; }
+form.form-drawer button { width: 100%; margin-top: 0.4rem; }

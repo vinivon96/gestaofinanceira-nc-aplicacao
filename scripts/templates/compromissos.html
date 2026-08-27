@@ -12,42 +12,101 @@
     <a href="{{ url_for('importar') }}">Importar</a>
   </nav>
   <h1>Contas &amp; Dívidas</h1>
-  <p class="periodo">Contas recorrentes referentes a {{ mes }}. Parcelamentos e dívidas mostram a situação atual (independem do mês selecionado).</p>
+  <p class="periodo">Contas recorrentes e parcelamentos referentes a {{ mes }}. Dívidas mostram a situação atual (independem do mês selecionado).</p>
 
-  <form class="periodo-form" method="get">
-    <label>Mês das contas recorrentes: <input type="month" name="mes" value="{{ mes }}"></label>
-    <button type="submit">Aplicar</button>
-  </form>
+  <div class="compromissos-topo">
+    <form class="periodo-form" method="get">
+      <label>Mês: <input type="month" name="mes" value="{{ mes }}"></label>
+      <button type="submit">Aplicar</button>
+    </form>
 
-  <div class="grid">
-    <div class="card">
-      <h2>Contas recorrentes</h2>
-      <p class="dica">Registro manual — marque como paga quando quitar. Sem conciliação automática com o extrato.</p>
-      {% if contas %}
-      <p class="totais-linha">Esperado: <strong>{{ totais_contas.esperado_fmt }}</strong> · Pago: <strong>{{ totais_contas.pago_fmt }}</strong> · Pendente: <strong>{{ totais_contas.pendente_fmt }}</strong></p>
-      <div class="tabela-scroll">
-      <table>
-        <thead>
-          <tr><th>Nome</th><th>Categoria</th><th>Vencimento</th><th class="valor">Valor esperado</th><th>Status</th><th>Ação</th></tr>
-        </thead>
-        <tbody>
-        {% for c in contas %}
-          <tr>
-            <td>{{ c.nome }}</td>
-            <td>{{ c.categoria_nome }}</td>
-            <td>Todo dia {{ c.dia_vencimento }}</td>
-            <td class="valor">{{ c.valor_esperado_fmt }}</td>
-            <td><span class="badge badge-{{ c.status }}">{{ c.status_rotulo }}</span></td>
-            <td>
-              {% if c.status == 'pendente' %}
-              <form class="form-inline" method="post" action="{{ url_for('marcar_conta_recorrente', id=c.id) }}">
+    <div class="botoes-novo">
+      <button type="button" class="btn-abrir-drawer" onclick="abrirDrawer('drawer-recorrente')">+ Nova conta recorrente</button>
+      <button type="button" class="btn-abrir-drawer" onclick="abrirDrawer('drawer-parcelamento')">+ Novo parcelamento</button>
+      <button type="button" class="btn-abrir-drawer" onclick="abrirDrawer('drawer-divida')">+ Nova dívida</button>
+    </div>
+  </div>
+
+  <p class="totais-linha">Contas recorrentes do mês — Esperado: <strong>{{ totais_contas.esperado_fmt }}</strong> · Pago: <strong>{{ totais_contas.pago_fmt }}</strong> · Pendente: <strong>{{ totais_contas.pendente_fmt }}</strong></p>
+
+  <div class="card card-filtros">
+    <div class="filtros-grid">
+      <label>Tipo
+        <select id="filtro-tipo" onchange="aplicarFiltrosCompromissos()">
+          <option value="">Todos</option>
+          <option value="recorrente">Recorrente</option>
+          <option value="parcelamento">Parcelamento</option>
+          <option value="divida">Dívida</option>
+        </select>
+      </label>
+      <label>Nome / destinatário
+        <input type="text" id="filtro-nome" placeholder="buscar..." oninput="aplicarFiltrosCompromissos()">
+      </label>
+      <label>Categoria
+        <select id="filtro-categoria" onchange="aplicarFiltrosCompromissos()">
+          <option value="">Todas</option>
+          {% for codigo, nome in categorias_lista %}
+          <option value="{{ codigo }}">{{ nome }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Cartão (final)
+        <input type="text" id="filtro-cartao" maxlength="4" placeholder="1234 (só parcelamento)" oninput="aplicarFiltrosCompromissos()">
+      </label>
+      <label>Total de parcelas
+        <input type="number" id="filtro-parcelas" min="1" placeholder="só parcelamento" oninput="aplicarFiltrosCompromissos()">
+      </label>
+      <label>Status
+        <select id="filtro-status" onchange="aplicarFiltrosCompromissos()">
+          <option value="">Todos</option>
+          <option value="pendente">Pendente</option>
+          <option value="paga">Paga</option>
+          <option value="pulada">Pulada</option>
+          <option value="projetado">Projetado</option>
+          <option value="aberta">Aberta</option>
+        </select>
+      </label>
+      <div class="filtros-acoes">
+        <button type="button" onclick="aplicarFiltrosCompromissos()">Aplicar</button>
+        <button type="button" onclick="limparFiltrosCompromissos()">Limpar filtros</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card card-compromissos">
+    {% if linhas %}
+    <div class="tabela-scroll">
+    <table id="tabela-compromissos">
+      <thead>
+        <tr>
+          <th>Tipo</th><th>Nome/Descrição</th><th>Categoria</th><th>Cartão</th><th>Parcela</th>
+          <th>Vencimento</th><th class="valor">Valor</th><th>Status</th><th>Ação</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for linha in linhas %}
+        <tr data-tipo="{{ linha.tipo }}" data-nome="{{ linha.busca|lower }}" data-categoria="{{ linha.categoria or '' }}"
+            data-cartao="{{ (linha.cartao_final or '')|lower }}" data-parcela-total="{{ linha.parcela_total or '' }}"
+            data-status="{{ linha.status }}">
+          <td>{{ linha.tipo_rotulo }}</td>
+          <td>{{ linha.nome }}</td>
+          <td>{{ linha.categoria_nome }}</td>
+          <td>{{ linha.cartao_rotulo }}</td>
+          <td>{{ linha.parcela or '—' }}</td>
+          <td>{{ linha.vencimento or '—' }}</td>
+          <td class="valor">{{ linha.valor_fmt }}</td>
+          <td><span class="badge badge-{{ linha.status }}">{{ linha.status_rotulo }}</span></td>
+          <td>
+            {% if linha.tipo == 'recorrente' %}
+              {% if linha.status == 'pendente' %}
+              <form class="form-inline" method="post" action="{{ url_for('marcar_conta_recorrente', id=linha.id) }}">
                 <input type="hidden" name="mes" value="{{ mes }}">
-                <input type="number" step="0.01" name="valor_pago" value="{{ c.valor_esperado }}">
+                <input type="number" step="0.01" name="valor_pago" value="{{ linha.valor }}">
                 <button type="submit" name="status" value="paga" class="btn-primario">Marcar paga</button>
                 <button type="submit" name="status" value="pulada">Pular</button>
               </form>
               {% else %}
-              <form class="form-inline" method="post" action="{{ url_for('desmarcar_conta_recorrente', id=c.id) }}">
+              <form class="form-inline" method="post" action="{{ url_for('desmarcar_conta_recorrente', id=linha.id) }}">
                 <input type="hidden" name="mes" value="{{ mes }}">
                 <button type="submit">Desmarcar</button>
               </form>
@@ -55,207 +114,226 @@
               <details class="opcoes-avancadas">
                 <summary>Mais ações</summary>
                 <form class="form-inline form-periodo-remocao" method="post"
-                      action="{{ url_for('remover_periodo_conta_recorrente_rota', id=c.id) }}">
+                      action="{{ url_for('remover_periodo_conta_recorrente_rota', id=linha.id) }}">
                   <input type="hidden" name="mes" value="{{ mes }}">
                   <label>De <input type="month" name="competencia_inicio" required></label>
                   <label>Até <input type="month" name="competencia_fim" required></label>
                   <button type="submit">Apagar período</button>
                 </form>
-                <form class="form-inline" method="post" action="{{ url_for('excluir_conta_recorrente_rota', id=c.id) }}"
-                      onsubmit="return confirm('Excluir a conta {{ c.nome }} e todo o histórico de ocorrências? Não pode ser desfeito.');">
+                <form class="form-inline" method="post" action="{{ url_for('excluir_conta_recorrente_rota', id=linha.id) }}"
+                      onsubmit="return confirm('Excluir a conta {{ linha.nome }} e todo o histórico de ocorrências? Não pode ser desfeito.');">
                   <button type="submit" class="btn-perigo">Excluir conta</button>
                 </form>
               </details>
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      </div>
-      {% else %}
-        <p class="vazio">Nenhuma conta recorrente cadastrada.</p>
-      {% endif %}
-
-      <form class="form-cadastro" method="post" action="{{ url_for('criar_conta_recorrente_rota') }}">
-        <label class="campo-descricao">Nome
-          <input type="text" name="nome" placeholder="ex: Aluguel" required>
-        </label>
-        <label>Categoria
-          <select name="categoria">
-            <option value="">(sem categoria)</option>
-            {% for codigo, nome in categorias_lista %}
-            <option value="{{ codigo }}">{{ nome }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>Valor esperado
-          <input type="number" step="0.01" min="0" name="valor_esperado" required>
-        </label>
-        <label>Dia de vencimento
-          <input type="number" min="1" max="31" name="dia_vencimento" required>
-        </label>
-        <label class="campo-descricao">Observação
-          <input type="text" name="observacao">
-        </label>
-        <button type="submit">+ Nova conta recorrente</button>
-      </form>
-    </div>
-
-    <div class="card">
-      <h2>Parcelamentos em andamento</h2>
-      <p class="dica">Combina o que já veio de fatura importada com cadastros manuais (compra feita, fatura ainda não fechou).</p>
-      {% if parcelamentos %}
-      <div class="tabela-scroll">
-      <table>
-        <thead>
-          <tr><th>Origem</th><th>Descrição</th><th>Cartão</th><th>Parcela</th><th class="valor">Valor da parcela</th><th class="valor">Restante</th><th>Termina em</th><th>Ação</th></tr>
-        </thead>
-        <tbody>
-        {% for p in parcelamentos %}
-          <tr>
-            <td>{{ 'Fatura' if p.origem == 'fatura' else 'Manual' }}</td>
-            <td>{{ p.descricao }}</td>
-            <td>{{ p.cartao_rotulo }}</td>
-            <td>
-              {{ p.parcela_atual }}/{{ p.parcela_total }}
-              {% if p.projetado %}<span class="badge badge-projetado" title="Ainda não veio numa fatura importada — projeção assumindo 1 parcela por mês">projetado</span>{% endif %}
-            </td>
-            <td class="valor">{{ p.valor_parcela_fmt }}</td>
-            <td class="valor">{{ p.restante_fmt }}</td>
-            <td>{{ p.termina_em or '—' }}</td>
-            <td>
-              {% if p.origem == 'manual' %}
-              <form class="form-inline" method="post" action="{{ url_for('encerrar_parcelamento_rota', id=p.id) }}">
+            {% elif linha.tipo == 'parcelamento' %}
+              {% if linha.id %}
+              <form class="form-inline" method="post" action="{{ url_for('encerrar_parcelamento_rota', id=linha.id) }}">
                 <button type="submit">Encerrar</button>
               </form>
               {% endif %}
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      </div>
-      {% else %}
-        <p class="vazio">Nenhum parcelamento em andamento nesse mês.</p>
-      {% endif %}
-
-      <form class="form-cadastro" method="post" action="{{ url_for('criar_parcelamento_rota') }}">
-        <label class="campo-descricao">Descrição
-          <input type="text" name="descricao" placeholder="ex: Notebook" required>
-        </label>
-        <label>Cartão (final)
-          <input type="text" name="cartao_final" maxlength="4" placeholder="1234">
-        </label>
-        <label>Valor da parcela
-          <input type="number" step="0.01" min="0" name="valor_parcela" required>
-        </label>
-        <label>Parcela atual
-          <input type="number" min="1" name="parcela_atual" required>
-        </label>
-        <label>Parcela total
-          <input type="number" min="1" name="parcela_total" required>
-        </label>
-        <label>Categoria
-          <select name="categoria">
-            <option value="">(sem categoria)</option>
-            {% for codigo, nome in categorias_lista %}
-            <option value="{{ codigo }}">{{ nome }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label class="campo-descricao">Observação
-          <input type="text" name="observacao">
-        </label>
-        <button type="submit">+ Novo parcelamento manual</button>
-      </form>
-    </div>
-
-    <div class="card">
-      <h2>Dívidas em aberto</h2>
-      <p class="dica">Pagamento é detectado automaticamente no extrato ao rodar <code>python scripts/vincular_pagamento_divida.py</code> (mesmo mecanismo usado para fatura de cartão).</p>
-      {% if dividas %}
-      <div class="tabela-scroll">
-      <table>
-        <thead>
-          <tr><th>Credor</th><th>Descrição</th><th>Categoria</th><th class="valor">Parcela</th><th>Restam</th><th>Próximo vencimento</th><th class="valor">Saldo devedor</th></tr>
-        </thead>
-        <tbody>
-        {% for d in dividas %}
-          <tr>
-            <td>{{ d.credor }}</td>
-            <td>{{ d.descricao or '—' }}</td>
-            <td>{{ d.categoria_nome }}</td>
-            <td class="valor">{{ d.valor_parcela_fmt }}</td>
-            <td>{{ d.parcelas_restantes }}</td>
-            <td>
-              <form class="form-inline" method="post" action="{{ url_for('atualizar_vencimento_divida_rota', id_divida=d.id_divida) }}">
-                <input type="date" name="data_vencimento_proxima" value="{{ d.data_vencimento_proxima or '' }}">
+            {% elif linha.tipo == 'divida' %}
+              <form class="form-inline" method="post" action="{{ url_for('atualizar_vencimento_divida_rota', id_divida=linha.id) }}">
+                <input type="date" name="data_vencimento_proxima" value="{{ linha.vencimento_bruto or '' }}">
                 <button type="submit">Salvar</button>
               </form>
-            </td>
-            <td class="valor">{{ d.saldo_devedor_fmt }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      </div>
-      {% else %}
-        <p class="vazio">Nenhuma dívida em aberto.</p>
-      {% endif %}
-
-      <form class="form-cadastro" method="post" action="{{ url_for('criar_divida_rota') }}">
-        <label class="campo-descricao">Credor
-          <input type="text" name="credor" placeholder="ex: Banco XYZ" required>
-        </label>
-        <label class="campo-descricao">Descrição
-          <input type="text" name="descricao" placeholder="ex: Empréstimo capital de giro">
-        </label>
-        <label>Valor da parcela
-          <input type="number" step="0.01" min="0" name="valor_parcela" required>
-        </label>
-        <label>Parcelas restantes
-          <input type="number" min="1" name="parcelas_restantes" required>
-        </label>
-        <label>Próximo vencimento
-          <input type="date" name="data_vencimento_proxima">
-        </label>
-        <label>Categoria
-          <select name="categoria">
-            <option value="">(sem categoria)</option>
-            {% for codigo, nome in categorias_lista %}
-            <option value="{{ codigo }}">{{ nome }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label class="campo-descricao">Observação
-          <input type="text" name="observacao">
-        </label>
-        <button type="submit">+ Nova dívida</button>
-      </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
     </div>
+    <p class="vazio" id="filtro-sem-resultado" style="display:none;">Nenhum compromisso para os filtros aplicados.</p>
+    {% else %}
+      <p class="vazio">Nenhum compromisso cadastrado nesse mês.</p>
+    {% endif %}
+  </div>
 
-    <div class="card card-prospeccao">
-      <h2>Custo fixo &amp; Prospecção</h2>
-      <p class="dica">Projeção dos próximos 6 meses a partir de {{ mes }}: contas recorrentes ativas (valor constante todo mês) + parcelamentos (mesma projeção da tabela acima) + dívidas (assumindo 1 parcela por mês a partir do próximo vencimento cadastrado).</p>
-      <div class="tabela-scroll">
-      <table>
-        <thead>
-          <tr><th>Mês</th><th class="valor">Recorrentes</th><th class="valor">Parcelamentos</th><th class="valor">Dívidas</th><th class="valor">Total</th></tr>
-        </thead>
-        <tbody>
-        {% for linha in prospeccao %}
-          <tr>
-            <td>{{ linha.competencia }}</td>
-            <td class="valor">{{ linha.recorrentes_fmt }}</td>
-            <td class="valor">{{ linha.parcelamentos_fmt }}</td>
-            <td class="valor">{{ linha.dividas_fmt }}</td>
-            <td class="valor">{{ linha.total_fmt }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      </div>
+  <div class="card card-prospeccao">
+    <h2>Custo fixo &amp; Prospecção</h2>
+    <p class="dica">Projeção dos próximos 6 meses a partir de {{ mes }}: contas recorrentes ativas (valor constante todo mês) + parcelamentos (mesma projeção da tabela acima) + dívidas (assumindo 1 parcela por mês a partir do próximo vencimento cadastrado).</p>
+    <div class="tabela-scroll">
+    <table>
+      <thead>
+        <tr><th>Mês</th><th class="valor">Recorrentes</th><th class="valor">Parcelamentos</th><th class="valor">Dívidas</th><th class="valor">Total</th></tr>
+      </thead>
+      <tbody>
+      {% for linha in prospeccao %}
+        <tr>
+          <td>{{ linha.competencia }}</td>
+          <td class="valor">{{ linha.recorrentes_fmt }}</td>
+          <td class="valor">{{ linha.parcelamentos_fmt }}</td>
+          <td class="valor">{{ linha.dividas_fmt }}</td>
+          <td class="valor">{{ linha.total_fmt }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
     </div>
   </div>
+
+  <div class="drawer-overlay" id="drawer-overlay" onclick="fecharDrawers()"></div>
+
+  <aside class="drawer" id="drawer-recorrente">
+    <div class="drawer-cabecalho">
+      <h2>Nova conta recorrente</h2>
+      <button type="button" class="drawer-fechar" onclick="fecharDrawers()" aria-label="Fechar">&times;</button>
+    </div>
+    <form class="form-cadastro form-drawer" method="post" action="{{ url_for('criar_conta_recorrente_rota') }}">
+      <label class="campo-descricao">Nome
+        <input type="text" name="nome" placeholder="ex: Aluguel" required>
+      </label>
+      <label>Categoria
+        <select name="categoria">
+          <option value="">(sem categoria)</option>
+          {% for codigo, nome in categorias_lista %}
+          <option value="{{ codigo }}">{{ nome }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Valor esperado
+        <input type="number" step="0.01" min="0" name="valor_esperado" required>
+      </label>
+      <label>Dia de vencimento
+        <input type="number" min="1" max="31" name="dia_vencimento" required>
+      </label>
+      <label class="campo-descricao">Observação
+        <input type="text" name="observacao">
+      </label>
+      <button type="submit">+ Nova conta recorrente</button>
+    </form>
+  </aside>
+
+  <aside class="drawer" id="drawer-parcelamento">
+    <div class="drawer-cabecalho">
+      <h2>Novo parcelamento manual</h2>
+      <button type="button" class="drawer-fechar" onclick="fecharDrawers()" aria-label="Fechar">&times;</button>
+    </div>
+    <form class="form-cadastro form-drawer" method="post" action="{{ url_for('criar_parcelamento_rota') }}">
+      <label class="campo-descricao">Descrição
+        <input type="text" name="descricao" placeholder="ex: Notebook" required>
+      </label>
+      <label>Cartão (final)
+        <input type="text" name="cartao_final" maxlength="4" placeholder="1234">
+      </label>
+      <label>Valor da parcela
+        <input type="number" step="0.01" min="0" name="valor_parcela" required>
+      </label>
+      <label>Parcela atual
+        <input type="number" min="1" name="parcela_atual" required>
+      </label>
+      <label>Parcela total
+        <input type="number" min="1" name="parcela_total" required>
+      </label>
+      <label>Categoria
+        <select name="categoria">
+          <option value="">(sem categoria)</option>
+          {% for codigo, nome in categorias_lista %}
+          <option value="{{ codigo }}">{{ nome }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="campo-descricao">Observação
+        <input type="text" name="observacao">
+      </label>
+      <button type="submit">+ Novo parcelamento manual</button>
+    </form>
+  </aside>
+
+  <aside class="drawer" id="drawer-divida">
+    <div class="drawer-cabecalho">
+      <h2>Nova dívida</h2>
+      <button type="button" class="drawer-fechar" onclick="fecharDrawers()" aria-label="Fechar">&times;</button>
+    </div>
+    <form class="form-cadastro form-drawer" method="post" action="{{ url_for('criar_divida_rota') }}">
+      <label class="campo-descricao">Credor
+        <input type="text" name="credor" placeholder="ex: Banco XYZ" required>
+      </label>
+      <label class="campo-descricao">Descrição
+        <input type="text" name="descricao" placeholder="ex: Empréstimo capital de giro">
+      </label>
+      <label>Valor da parcela
+        <input type="number" step="0.01" min="0" name="valor_parcela" required>
+      </label>
+      <label>Parcelas restantes
+        <input type="number" min="1" name="parcelas_restantes" required>
+      </label>
+      <label>Próximo vencimento
+        <input type="date" name="data_vencimento_proxima">
+      </label>
+      <label>Categoria
+        <select name="categoria">
+          <option value="">(sem categoria)</option>
+          {% for codigo, nome in categorias_lista %}
+          <option value="{{ codigo }}">{{ nome }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="campo-descricao">Observação
+        <input type="text" name="observacao">
+      </label>
+      <button type="submit">+ Nova dívida</button>
+    </form>
+  </aside>
+
+  <script>
+    function aplicarFiltrosCompromissos() {
+      var tipo = document.getElementById('filtro-tipo').value;
+      var nome = document.getElementById('filtro-nome').value.trim().toLowerCase();
+      var categoria = document.getElementById('filtro-categoria').value;
+      var cartao = document.getElementById('filtro-cartao').value.trim().toLowerCase();
+      var parcelas = document.getElementById('filtro-parcelas').value.trim();
+      var status = document.getElementById('filtro-status').value;
+
+      var linhas = document.querySelectorAll('#tabela-compromissos tbody tr');
+      var visiveis = 0;
+
+      linhas.forEach(function (linha) {
+        var linhaTipo = linha.dataset.tipo;
+        var ok = true;
+
+        if (tipo && linhaTipo !== tipo) ok = false;
+        if (ok && nome && linha.dataset.nome.indexOf(nome) === -1) ok = false;
+        if (ok && categoria && linha.dataset.categoria !== categoria) ok = false;
+        if (ok && status && linha.dataset.status !== status) ok = false;
+        // Cartão e total de parcelas só se aplicam a parcelamentos — outros
+        // tipos não ficam escondidos por causa desses dois filtros.
+        if (ok && linhaTipo === 'parcelamento') {
+          if (cartao && linha.dataset.cartao.indexOf(cartao) === -1) ok = false;
+          if (ok && parcelas && linha.dataset.parcelaTotal !== parcelas) ok = false;
+        }
+
+        linha.style.display = ok ? '' : 'none';
+        if (ok) visiveis++;
+      });
+
+      var aviso = document.getElementById('filtro-sem-resultado');
+      if (aviso) aviso.style.display = (linhas.length > 0 && visiveis === 0) ? '' : 'none';
+    }
+
+    function limparFiltrosCompromissos() {
+      ['filtro-tipo', 'filtro-categoria', 'filtro-status'].forEach(function (id) {
+        document.getElementById(id).value = '';
+      });
+      ['filtro-nome', 'filtro-cartao', 'filtro-parcelas'].forEach(function (id) {
+        document.getElementById(id).value = '';
+      });
+      aplicarFiltrosCompromissos();
+    }
+
+    function abrirDrawer(id) {
+      document.getElementById(id).classList.add('aberto');
+      document.getElementById('drawer-overlay').classList.add('aberto');
+    }
+
+    function fecharDrawers() {
+      document.querySelectorAll('.drawer.aberto').forEach(function (d) { d.classList.remove('aberto'); });
+      document.getElementById('drawer-overlay').classList.remove('aberto');
+    }
+
+    document.addEventListener('keydown', function (evento) {
+      if (evento.key === 'Escape') fecharDrawers();
+    });
+  </script>
 </body>
 </html>

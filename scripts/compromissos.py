@@ -196,6 +196,81 @@ def dividas_em_aberto(conn: sqlite3.Connection) -> list[tuple]:
     ).fetchall()
 
 
+def linhas_unificadas_compromissos(conn: sqlite3.Connection, competencia: str) -> list[dict]:
+    """Combina contas_recorrentes_do_mes, parcelamentos_em_andamento e
+    dividas_em_aberto num formato único de linha, pra tela /compromissos
+    mostrar tudo numa tabela só (ver spec seção 15/16 — redesign). Não
+    reimplementa nenhuma lógica de negócio (projeção de parcela, cálculo de
+    status): só reformata o que essas três funções já devolvem em campos
+    comuns. Formatação de exibição (categoria_nome, valor_fmt, cartao_rotulo,
+    status_rotulo) fica em dashboard.py, mesmo padrão usado pelas outras
+    views do app.
+
+    Campos de cada linha: tipo, id, nome (exibição), busca (texto usado pelo
+    filtro — pode incluir mais que `nome`, ex: dívida busca em credor+descrição),
+    categoria (código ou None), cartao_final (código ou None), parcela (texto
+    ou None), parcela_total (int ou None — só parcelamentos, usado pelo
+    filtro "Total de parcelas"), vencimento (texto ou None), vencimento_bruto
+    (data ISO ou None — só dívida, usado pra preencher o form de "Salvar"),
+    valor (numérico), status (código), valor_pago (só recorrente)."""
+    linhas = []
+
+    for id_, nome, categoria, valor_esperado, dia_vencimento, status, valor_pago, _data_pagamento in (
+        contas_recorrentes_do_mes(conn, competencia)
+    ):
+        linhas.append({
+            "tipo": "recorrente",
+            "id": id_,
+            "nome": nome,
+            "busca": nome,
+            "categoria": categoria,
+            "cartao_final": None,
+            "parcela": None,
+            "parcela_total": None,
+            "vencimento": f"Todo dia {dia_vencimento}",
+            "vencimento_bruto": None,
+            "valor": valor_esperado,
+            "valor_pago": valor_pago,
+            "status": status,
+        })
+
+    for p in parcelamentos_em_andamento(conn, competencia):
+        linhas.append({
+            "tipo": "parcelamento",
+            "id": p["id"],
+            "nome": p["descricao"],
+            "busca": p["descricao"],
+            "categoria": None,
+            "cartao_final": p["cartao_final"],
+            "parcela": f"{p['parcela_atual']}/{p['parcela_total']}",
+            "parcela_total": p["parcela_total"],
+            "vencimento": p["termina_em"],
+            "vencimento_bruto": None,
+            "valor": p["valor_parcela"],
+            "status": "projetado" if p["projetado"] else "aberta",
+        })
+
+    for id_divida, credor, descricao, categoria, valor_parcela, parcelas_restantes, data_vencimento_proxima in (
+        dividas_em_aberto(conn)
+    ):
+        linhas.append({
+            "tipo": "divida",
+            "id": id_divida,
+            "nome": f"{credor} — {descricao}" if descricao else credor,
+            "busca": f"{credor} {descricao or ''}".strip(),
+            "categoria": categoria,
+            "cartao_final": None,
+            "parcela": f"{parcelas_restantes} restante(s)",
+            "parcela_total": None,
+            "vencimento": data_vencimento_proxima,
+            "vencimento_bruto": data_vencimento_proxima,
+            "valor": valor_parcela,
+            "status": "aberta",
+        })
+
+    return linhas
+
+
 def criar_conta_recorrente(
     conn: sqlite3.Connection, nome: str, categoria: str | None, valor_esperado: float, dia_vencimento: int,
     observacao: str,

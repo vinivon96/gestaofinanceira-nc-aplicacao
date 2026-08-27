@@ -468,62 +468,39 @@ def reclassificar():
         conn.close()
 
 
-STATUS_CONTA_ROTULO = {"pendente": "Pendente", "paga": "Paga", "pulada": "Pulada"}
+TIPO_COMPROMISSO_ROTULO = {"recorrente": "Recorrente", "parcelamento": "Parcelamento", "divida": "Dívida"}
+STATUS_COMPROMISSO_ROTULO = {
+    "pendente": "Pendente", "paga": "Paga", "pulada": "Pulada", "projetado": "Projetado", "aberta": "Aberta",
+}
 
 
 def montar_contexto_compromissos(conn: sqlite3.Connection, mes: str) -> dict:
     categorias = nomes_categorias(conn)
+    mapa_cartoes = cadastros.mapa_cartoes_por_final(conn)
 
-    contas = []
-    for id_, nome, categoria, valor_esperado, dia_vencimento, status, valor_pago, data_pagamento in (
-        compromissos.contas_recorrentes_do_mes(conn, mes)
-    ):
-        contas.append({
-            "id": id_,
-            "nome": nome,
+    linhas = []
+    for linha in compromissos.linhas_unificadas_compromissos(conn, mes):
+        categoria = linha["categoria"]
+        linhas.append({
+            **linha,
+            "tipo_rotulo": TIPO_COMPROMISSO_ROTULO[linha["tipo"]],
             "categoria_nome": categorias.get(categoria, categoria) if categoria else "(sem categoria)",
-            "valor_esperado": valor_esperado,
-            "valor_esperado_fmt": fmt_moeda(valor_esperado),
-            "dia_vencimento": dia_vencimento,
-            "status": status,
-            "valor_pago": valor_pago,
-            "status_rotulo": STATUS_CONTA_ROTULO.get(status, status),
+            "cartao_rotulo": cadastros.nome_cartao(linha["cartao_final"], mapa_cartoes),
+            "valor_fmt": fmt_moeda(linha["valor"]),
+            "status_rotulo": STATUS_COMPROMISSO_ROTULO.get(linha["status"], linha["status"]),
         })
 
-    total_esperado = sum(c["valor_esperado"] for c in contas)
-    total_pago = sum(c["valor_pago"] or 0 for c in contas if c["status"] == "paga")
-    total_pendente = sum(c["valor_esperado"] for c in contas if c["status"] == "pendente")
+    # Totais referem-se só às contas recorrentes do mês selecionado — parcelamentos
+    # e dívidas não entram nessa soma (decisão explícita, spec seção 15/16).
+    linhas_recorrentes = [l for l in linhas if l["tipo"] == "recorrente"]
+    total_esperado = sum(l["valor"] for l in linhas_recorrentes)
+    total_pago = sum(l["valor_pago"] or 0 for l in linhas_recorrentes if l["status"] == "paga")
+    total_pendente = sum(l["valor"] for l in linhas_recorrentes if l["status"] == "pendente")
     totais_contas = {
         "esperado_fmt": fmt_moeda(total_esperado),
         "pago_fmt": fmt_moeda(total_pago),
         "pendente_fmt": fmt_moeda(total_pendente),
     }
-
-    mapa_cartoes = cadastros.mapa_cartoes_por_final(conn)
-    parcelamentos = [
-        {
-            **p,
-            "valor_parcela_fmt": fmt_moeda(p["valor_parcela"]),
-            "restante_fmt": fmt_moeda(p["restante"]),
-            "cartao_rotulo": cadastros.nome_cartao(p["cartao_final"], mapa_cartoes),
-        }
-        for p in compromissos.parcelamentos_em_andamento(conn, mes)
-    ]
-
-    dividas = []
-    for id_divida, credor, descricao, categoria, valor_parcela, parcelas_restantes, data_vencimento_proxima in (
-        compromissos.dividas_em_aberto(conn)
-    ):
-        dividas.append({
-            "id_divida": id_divida,
-            "credor": credor,
-            "descricao": descricao,
-            "categoria_nome": categorias.get(categoria, categoria) if categoria else "(sem categoria)",
-            "valor_parcela_fmt": fmt_moeda(valor_parcela),
-            "parcelas_restantes": parcelas_restantes,
-            "data_vencimento_proxima": data_vencimento_proxima,
-            "saldo_devedor_fmt": fmt_moeda(valor_parcela * parcelas_restantes),
-        })
 
     prospeccao = [
         {**linha, "recorrentes_fmt": fmt_moeda(linha["recorrentes"]), "parcelamentos_fmt": fmt_moeda(linha["parcelamentos"]),
@@ -533,10 +510,8 @@ def montar_contexto_compromissos(conn: sqlite3.Connection, mes: str) -> dict:
 
     return {
         "mes": mes,
-        "contas": contas,
+        "linhas": linhas,
         "totais_contas": totais_contas,
-        "parcelamentos": parcelamentos,
-        "dividas": dividas,
         "prospeccao": prospeccao,
         "categorias_lista": categorias_para_select(categorias),
     }

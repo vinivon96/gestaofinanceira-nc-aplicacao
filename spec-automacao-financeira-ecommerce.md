@@ -340,6 +340,8 @@ python scripts/vincular_pagamento_fatura.py
 scp db/financeiro.db root@2.25.155.197:/root/automacao-financeira-nc/db/financeiro.db
 ```
 
+**Alternativa sem terminal:** a tela `/importar` do dashboard faz os passos de parser + classificar + vincular por upload direto no navegador — ver seção 16.
+
 ## 12. Infraestrutura de deploy (VPS)
 
 **Servidor:** VPS Hostinger (Ubuntu 24.04), já rodando n8n, Evolution API e Traefik em containers Docker separados.
@@ -402,3 +404,22 @@ Painel novo (`/compromissos` no dashboard) pra controlar o que **vai vencer**, c
 - **Dívidas** (`dividas`): ao contrário de contas recorrentes, são rastreadas **junto com o extrato** — modeladas como parcela fixa + parcelas restantes (cobre tanto dívida parcelada quanto pagamento único, com `parcelas_restantes = 1`), o que permite reaproveitar o mesmo mecanismo de `vincular_pagamento_fatura.py`: `scripts/vincular_pagamento_divida.py` procura, para cada dívida aberta, uma saída no extrato com valor ≈ `valor_parcela` numa janela de ±15 dias do próximo vencimento; ao achar, linka a transação (`transacoes.id_divida`), decrementa `parcelas_restantes`, avança o vencimento em +1 mês e marca a dívida como quitada ao zerar. **Limitação assumida:** avanço fixo de +1 mês — dívida com periodicidade diferente exige ajuste manual do campo "próximo vencimento" na interface entre uma parcela e outra.
 
 Rodar `python scripts/vincular_pagamento_divida.py` faz parte do fluxo mensal (`importar_historico.sh`, passo 5/5), mesma lógica de `vincular_pagamento_fatura.py`.
+
+**Melhorias (implementadas após validação com o usuário na tela real):**
+
+- **Parcelamentos com projeção mensal:** o filtro de mês da tela (antes só afetava contas recorrentes) agora também move a tabela de parcelamentos. Se já existe uma fatura importada que fechou exatamente naquele mês, mostra a parcela real; senão (mês futuro, fatura ainda não chegou), projeta assumindo cadência de 1 parcela por mês a partir do último ponto conhecido, marcando o item com o selo "projetado". Coluna nova **"Termina em"**: competência estimada da última parcela, calculada a partir do vencimento da fatura de referência + parcelas restantes. Lógica em `compromissos._parcela_projetada` (funções auxiliares `diferenca_em_meses`/`somar_meses_competencia`).
+- **Totais de contas recorrentes:** linha de resumo (esperado / pago / pendente) acima da tabela, somando as contas do mês selecionado.
+- **Excluir/limpar conta recorrente:** cada conta ganhou um "Mais ações" com duas opções — apagar ocorrências de um intervalo de meses (mantendo a conta ativa) ou excluir a conta inteira com todo o histórico (`compromissos.excluir_conta_recorrente` / `remover_ocorrencias_periodo`, com confirmação no navegador antes de excluir por completo).
+- **Custo fixo & Prospecção:** card novo projetando os próximos 6 meses (contas recorrentes ativas, valor constante todo mês, + parcelamentos, mesma projeção acima + dívidas, assumindo 1 parcela por mês a partir do próximo vencimento cadastrado) — `compromissos.prospeccao_custo_fixo`, reaproveita a mesma função de parcelamentos por competência em vez de duplicar a lógica de projeção.
+
+Layout: as tabelas da tela (contas recorrentes, parcelamentos, dívidas, prospecção) ficam dentro de um contêiner com rolagem horizontal própria (`.tabela-scroll`) em vez de forçar o texto a quebrar dentro dos cards de ~340px — colunas novas (Termina em, Mais ações) tinham deixado a tela ilegível antes dessa correção.
+
+## 16. Fase — Importação pelo navegador + cadastro de contas/cartões
+
+Reduz a fricção do fluxo mensal manual (seção 11): em vez de precisar abrir o terminal e rodar `importar_historico.sh`, dá pra subir um extrato ou fatura direto pela tela `/importar` do dashboard.
+
+- **`scripts/importacao.py`:** reaproveita os mesmos parsers e a mesma idempotência do fluxo manual (`parse_extrato_inter.py` / `parse_fatura_cartao.py`, INSERT OR IGNORE / UPSERT por chave primária) — só troca "caminho de pasta" por "arquivo enviado pelo navegador". O upload é salvo nas mesmas pastas do fluxo manual (`dbextratos_reais/`, `faturas_reais/` — ver CLAUDE.md), com sufixo numérico em caso de nome duplicado (nunca sobrescreve um arquivo já existente). Depois de importar, roda automaticamente `classificar` → `vincular_pagamento_fatura` → `vincular_pagamento_divida`, igual ao fluxo mensal.
+- **Senha da fatura:** mesma regra da seção 6 (tenta abrir sem senha primeiro) — a tela `/importar` também aceita uma senha digitada manualmente naquele upload específico, como alternativa a configurar a variável de ambiente antes.
+- **Cadastro de contas bancárias e cartões** (`contas_bancarias`, `cartoes` — `scripts/cadastros.py`): dado cadastral de referência (banco, agência/conta, final do cartão, dia de fechamento/vencimento habituais), não movimentação. Usado pra dar rótulo amigável (ex: "Banco X ****7111 (apelido)") em vez de mostrar só os 4 últimos dígitos crus — já aplicado na tabela de Parcelamentos (seção 15). Sem cadastro correspondente, a tela cai de volta pro final cru do cartão.
+
+**Status da automação de ingestão (seção 11):** isso reduz a fricção do fluxo manual, mas não substitui a automação por e-mail/API — segue pendente a verificação do usuário sobre envio automático por e-mail no Inter e Mercado Pago.
