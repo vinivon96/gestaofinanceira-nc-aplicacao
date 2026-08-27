@@ -105,9 +105,15 @@ def parse_data_br(texto: str) -> str:
     return f"{ano}-{mes}-{dia}"
 
 
-def extrair_texto(pdf_path: Path) -> str:
-    """Tenta abrir o PDF sem senha primeiro; só recorre a FATURA_CARTAO_SENHA
-    se o próprio arquivo exigir senha (PDFPasswordIncorrect/PDFEncryptionError)."""
+class SenhaNecessariaError(Exception):
+    """PDF protegido por senha, e nem FATURA_CARTAO_SENHA nem uma senha manual foram fornecidas."""
+
+
+def extrair_texto(pdf_path: Path, senha_manual: str | None = None) -> str:
+    """Tenta abrir o PDF sem senha primeiro; só recorre a uma senha (manual,
+    ex: informada na tela de importação, ou a variável de ambiente
+    FATURA_CARTAO_SENHA) se o próprio arquivo exigir
+    (PDFPasswordIncorrect/PDFEncryptionError)."""
     try:
         with pdfplumber.open(pdf_path) as pdf:
             return "\n".join(page.extract_text() or "" for page in pdf.pages)
@@ -115,13 +121,12 @@ def extrair_texto(pdf_path: Path) -> str:
         causa = erro.__cause__ or erro.__context__ if isinstance(erro, PdfminerException) else erro
         if not isinstance(causa, (PDFPasswordIncorrect, PDFEncryptionError)):
             raise
-        senha = os.environ.get(SENHA_ENV_VAR)
+        senha = senha_manual or os.environ.get(SENHA_ENV_VAR)
         if not senha:
-            print(
-                f"O PDF {pdf_path} é protegido por senha. "
-                f"Defina a variável de ambiente {SENHA_ENV_VAR} com a senha antes de rodar."
+            raise SenhaNecessariaError(
+                f"O PDF {pdf_path.name} é protegido por senha. "
+                f"Defina a variável de ambiente {SENHA_ENV_VAR} ou informe a senha."
             )
-            sys.exit(1)
         with pdfplumber.open(pdf_path, password=senha) as pdf:
             return "\n".join(page.extract_text() or "" for page in pdf.pages)
 
@@ -190,8 +195,8 @@ def extrair_lancamentos(texto: str, id_fatura: str, data_fechamento_iso: str) ->
     return lancamentos
 
 
-def importar(pdf_path: Path, db_path: Path) -> tuple[str, int, int]:
-    texto = extrair_texto(pdf_path)
+def importar(pdf_path: Path, db_path: Path, senha_manual: str | None = None) -> tuple[str, int, int]:
+    texto = extrair_texto(pdf_path, senha_manual)
     metadados = extrair_metadados(texto)
 
     if "data_fechamento" not in metadados:
@@ -271,5 +276,9 @@ if __name__ == "__main__":
     pdf_path = Path(sys.argv[1])
     db_path = Path(sys.argv[2]) if len(sys.argv) > 2 else DEFAULT_DB_PATH
 
-    id_fatura, inseridos, ignorados = importar(pdf_path, db_path)
+    try:
+        id_fatura, inseridos, ignorados = importar(pdf_path, db_path)
+    except SenhaNecessariaError as erro:
+        print(erro)
+        sys.exit(1)
     print(f"Fatura {id_fatura}: {inseridos} lançamentos inseridos, {ignorados} já existiam, em {db_path}")

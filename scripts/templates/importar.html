@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<title>Importar — NC Decorações</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='estilo.css') }}">
+</head>
+<body>
+  <nav class="nav-principal">
+    <a href="{{ url_for('index') }}">Fluxo de caixa</a>
+    <a href="{{ url_for('compromissos') }}">Contas &amp; Dívidas</a>
+    <a href="{{ url_for('importar') }}" class="ativo">Importar</a>
+  </nav>
+  <h1>Importar</h1>
+  <p class="periodo">Upload de extrato bancário e fatura de cartão, e cadastro de contas/cartões usados como referência nas telas do dashboard.</p>
+
+  {% with mensagens = get_flashed_messages(with_categories=true) %}
+    {% if mensagens %}
+    <div class="flashes">
+      {% for categoria, mensagem in mensagens %}
+        <p class="flash flash-{{ categoria }}">{{ mensagem }}</p>
+      {% endfor %}
+    </div>
+    {% endif %}
+  {% endwith %}
+
+  <div class="grid">
+    <div class="card">
+      <h2>Importar extrato bancário</h2>
+      <p class="dica">Aceita .csv ou .xlsx no formato do Banco Inter. Depois de salvo, o motor de classificação e o vínculo de pagamento de fatura/dívida rodam automaticamente — pode levar alguns segundos.</p>
+      <form class="form-cadastro" method="post" action="{{ url_for('importar_extrato_rota') }}" enctype="multipart/form-data">
+        <label class="campo-descricao">Arquivo
+          <input type="file" name="arquivo" accept=".csv,.xlsx" required>
+        </label>
+        <button type="submit">Importar extrato</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Importar fatura de cartão</h2>
+      <p class="dica">Aceita .pdf. Se a fatura for protegida por senha e a variável de ambiente FATURA_CARTAO_SENHA não estiver definida no servidor, informe a senha abaixo (usada só nesta importação, não é salva).</p>
+      <form class="form-cadastro" method="post" action="{{ url_for('importar_fatura_rota') }}" enctype="multipart/form-data">
+        <label class="campo-descricao">Arquivo
+          <input type="file" name="arquivo" accept=".pdf" required>
+        </label>
+        <label>Senha do PDF (se necessário)
+          <input type="password" name="senha" autocomplete="off">
+        </label>
+        <button type="submit">Importar fatura</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Contas bancárias cadastradas</h2>
+      <p class="dica">Cadastro de referência (banco, agência, conta) — não interfere na importação do extrato, é só pra dar contexto nas telas.</p>
+      {% if contas_bancarias %}
+      <div class="tabela-scroll">
+      <table>
+        <thead>
+          <tr><th>Banco</th><th>Agência</th><th>Conta</th><th>Apelido</th><th>Ação</th></tr>
+        </thead>
+        <tbody>
+        {% for c in contas_bancarias %}
+          <tr>
+            <td>{{ c.banco }}</td>
+            <td>{{ c.agencia or '—' }}</td>
+            <td>{{ c.numero_conta or '—' }}</td>
+            <td>{{ c.apelido or '—' }}</td>
+            <td>
+              <form class="form-inline" method="post" action="{{ url_for('excluir_conta_bancaria_rota', id=c.id) }}"
+                    onsubmit="return confirm('Excluir esta conta bancária do cadastro?');">
+                <button type="submit" class="btn-perigo">Excluir</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+        <p class="vazio">Nenhuma conta bancária cadastrada.</p>
+      {% endif %}
+
+      <form class="form-cadastro" method="post" action="{{ url_for('criar_conta_bancaria_rota') }}">
+        <label class="campo-descricao">Banco
+          <input type="text" name="banco" placeholder="ex: Banco Inter" required>
+        </label>
+        <label>Agência
+          <input type="text" name="agencia" placeholder="0001">
+        </label>
+        <label>Conta
+          <input type="text" name="numero_conta" placeholder="123456-7">
+        </label>
+        <label class="campo-descricao">Apelido
+          <input type="text" name="apelido" placeholder="ex: Conta PJ principal">
+        </label>
+        <button type="submit">+ Nova conta bancária</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Cartões cadastrados</h2>
+      <p class="dica">Cadastro de referência (banco, final do cartão, dia de fechamento/vencimento habituais) — usado só para exibir um rótulo amigável nas telas de fatura e parcelamento, não substitui os dados reais de cada fatura importada.</p>
+      {% if cartoes %}
+      <div class="tabela-scroll">
+      <table>
+        <thead>
+          <tr><th>Banco</th><th>Apelido</th><th>Final</th><th>Fechamento</th><th>Vencimento</th><th>Ação</th></tr>
+        </thead>
+        <tbody>
+        {% for c in cartoes %}
+          <tr>
+            <td>{{ c.banco }}</td>
+            <td>{{ c.apelido or '—' }}</td>
+            <td>****{{ c.final_cartao }}</td>
+            <td>{{ 'Dia ' ~ c.dia_fechamento if c.dia_fechamento else '—' }}</td>
+            <td>{{ 'Dia ' ~ c.dia_vencimento if c.dia_vencimento else '—' }}</td>
+            <td>
+              <form class="form-inline" method="post" action="{{ url_for('excluir_cartao_rota', id=c.id) }}"
+                    onsubmit="return confirm('Excluir este cartão do cadastro?');">
+                <button type="submit" class="btn-perigo">Excluir</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+        <p class="vazio">Nenhum cartão cadastrado.</p>
+      {% endif %}
+
+      <form class="form-cadastro" method="post" action="{{ url_for('criar_cartao_rota') }}">
+        <label class="campo-descricao">Banco
+          <input type="text" name="banco" placeholder="ex: Mercado Pago" required>
+        </label>
+        <label class="campo-descricao">Apelido
+          <input type="text" name="apelido" placeholder="ex: Ferramentas/SaaS">
+        </label>
+        <label>Final do cartão
+          <input type="text" name="final_cartao" maxlength="4" placeholder="7111" required>
+        </label>
+        <label>Dia de fechamento
+          <input type="number" min="1" max="31" name="dia_fechamento">
+        </label>
+        <label>Dia de vencimento
+          <input type="number" min="1" max="31" name="dia_vencimento">
+        </label>
+        <button type="submit">+ Novo cartão</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

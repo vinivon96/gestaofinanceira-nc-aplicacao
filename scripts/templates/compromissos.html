@@ -9,6 +9,7 @@
   <nav class="nav-principal">
     <a href="{{ url_for('index') }}">Fluxo de caixa</a>
     <a href="{{ url_for('compromissos') }}" class="ativo">Contas &amp; Dívidas</a>
+    <a href="{{ url_for('importar') }}">Importar</a>
   </nav>
   <h1>Contas &amp; Dívidas</h1>
   <p class="periodo">Contas recorrentes referentes a {{ mes }}. Parcelamentos e dívidas mostram a situação atual (independem do mês selecionado).</p>
@@ -114,7 +115,7 @@
           <tr>
             <td>{{ 'Fatura' if p.origem == 'fatura' else 'Manual' }}</td>
             <td>{{ p.descricao }}</td>
-            <td>{{ p.cartao_final or '—' }}</td>
+            <td>{{ p.cartao_rotulo }}</td>
             <td>
               {{ p.parcela_atual }}/{{ p.parcela_total }}
               {% if p.projetado %}<span class="badge badge-projetado" title="Ainda não veio numa fatura importada — projeção assumindo 1 parcela por mês">projetado</span>{% endif %}

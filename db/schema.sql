@@ -136,6 +136,33 @@ CREATE TABLE IF NOT EXISTS parcelamentos (
     FOREIGN KEY (categoria) REFERENCES plano_de_contas (codigo)
 );
 
+-- Contas bancárias cadastradas manualmente — dado cadastral (banco, agência,
+-- número da conta), não movimentação. Hoje só a conta Inter é usada pelos
+-- parsers, mas o cadastro já suporta mais de uma, útil como referência.
+CREATE TABLE IF NOT EXISTS contas_bancarias (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    banco         TEXT NOT NULL,
+    agencia       TEXT,
+    numero_conta  TEXT,
+    apelido       TEXT,
+    ativa         INTEGER NOT NULL DEFAULT 1 CHECK (ativa IN (0, 1))
+);
+
+-- Cartões cadastrados manualmente — dado cadastral (banco emissor, final do
+-- cartão, dia de fechamento/vencimento habituais). Não é a mesma coisa que
+-- `faturas_cartao` (que guarda as datas REAIS de cada fatura já importada):
+-- aqui é só referência/lembrete e para exibir um rótulo amigável (banco +
+-- apelido) em vez de só os 4 últimos dígitos nas telas de fatura/parcelamento.
+CREATE TABLE IF NOT EXISTS cartoes (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    banco            TEXT NOT NULL,
+    apelido          TEXT,
+    final_cartao     TEXT NOT NULL,
+    dia_fechamento   INTEGER CHECK (dia_fechamento BETWEEN 1 AND 31),
+    dia_vencimento   INTEGER CHECK (dia_vencimento BETWEEN 1 AND 31),
+    ativo            INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1))
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_regras_classificacao_padrao ON regras_classificacao (padrao, tabela_alvo);
 CREATE INDEX IF NOT EXISTS idx_transacoes_data ON transacoes (data);
 CREATE INDEX IF NOT EXISTS idx_transacoes_tipo ON transacoes (tipo);

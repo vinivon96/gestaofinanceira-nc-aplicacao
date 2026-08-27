@@ -170,6 +170,11 @@ form.busca-form button {
 
 .card-prospeccao { grid-column: 1 / -1; }
 
+.flashes { margin-bottom: 1.25rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.flash { margin: 0; padding: 0.6rem 0.9rem; border-radius: 8px; font-size: 0.88rem; border: 1px solid var(--borda); }
+.flash-sucesso { background: rgba(47, 216, 143, 0.12); color: var(--verde); border-color: rgba(47, 216, 143, 0.3); }
+.flash-erro { background: rgba(239, 68, 68, 0.12); color: #f87171; border-color: rgba(239, 68, 68, 0.3); }
+
 details.opcoes-avancadas { display: inline-block; margin-left: 0.4rem; }
 details.opcoes-avancadas summary {
   display: inline-block; cursor: pointer; font-size: 0.78rem; color: var(--texto-fraco);

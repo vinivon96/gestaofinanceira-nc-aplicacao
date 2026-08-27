@@ -36,9 +36,12 @@ import sqlite3
 from datetime import date
 from pathlib import Path
 
-from flask import Flask, Response, jsonify, redirect, render_template, request, url_for
+from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 
+import cadastros
 import compromissos
+import importacao
+import parse_fatura_cartao
 from relatorio import (
     DEFAULT_DB_PATH,
     buscar_por_termo,
@@ -73,6 +76,10 @@ PALETA_DONUT = [
 ]
 
 app = Flask(__name__)
+# Só usado pra assinar o cookie de sessão das mensagens flash da tela de
+# importação — não precisa sobreviver a um restart, então gerar um valor
+# novo a cada subida do processo é suficiente (não é credencial de acesso).
+app.secret_key = secrets.token_hex(32)
 
 DASHBOARD_ENV = os.environ.get("DASHBOARD_ENV", "development")
 
@@ -492,8 +499,14 @@ def montar_contexto_compromissos(conn: sqlite3.Connection, mes: str) -> dict:
         "pendente_fmt": fmt_moeda(total_pendente),
     }
 
+    mapa_cartoes = cadastros.mapa_cartoes_por_final(conn)
     parcelamentos = [
-        {**p, "valor_parcela_fmt": fmt_moeda(p["valor_parcela"]), "restante_fmt": fmt_moeda(p["restante"])}
+        {
+            **p,
+            "valor_parcela_fmt": fmt_moeda(p["valor_parcela"]),
+            "restante_fmt": fmt_moeda(p["restante"]),
+            "cartao_rotulo": cadastros.nome_cartao(p["cartao_final"], mapa_cartoes),
+        }
         for p in compromissos.parcelamentos_em_andamento(conn, mes)
     ]
 
@@ -670,6 +683,124 @@ def atualizar_vencimento_divida_rota(id_divida: str):
     finally:
         conn.close()
     return redirect(url_for("compromissos"))
+
+
+@app.route("/importar", endpoint="importar")
+def pagina_importar():
+    conn = sqlite3.connect(DEFAULT_DB_PATH)
+    try:
+        contas = [
+            {"id": id_, "banco": banco, "agencia": agencia, "numero_conta": numero_conta,
+             "apelido": apelido, "ativa": bool(ativa)}
+            for id_, banco, agencia, numero_conta, apelido, ativa in cadastros.listar_contas_bancarias(conn)
+        ]
+        cartoes = [
+            {"id": id_, "banco": banco, "apelido": apelido, "final_cartao": final_cartao,
+             "dia_fechamento": dia_fechamento, "dia_vencimento": dia_vencimento, "ativo": bool(ativo)}
+            for id_, banco, apelido, final_cartao, dia_fechamento, dia_vencimento, ativo in cadastros.listar_cartoes(conn)
+        ]
+        return render_template("importar.html", contas_bancarias=contas, cartoes=cartoes)
+    finally:
+        conn.close()
+
+
+@app.route("/importar/extrato", methods=["POST"], endpoint="importar_extrato_rota")
+def importar_extrato_rota():
+    arquivo = request.files.get("arquivo")
+    if not arquivo or not arquivo.filename:
+        flash("Selecione um arquivo de extrato (.csv ou .xlsx) antes de importar.", "erro")
+        return redirect(url_for("importar"))
+
+    try:
+        resultado = importacao.importar_extrato_upload(arquivo, DEFAULT_DB_PATH)
+        flash(
+            f"Extrato \"{resultado['nome_arquivo']}\" importado: {resultado['inseridas']} transações novas, "
+            f"{resultado['ignoradas']} já existiam.",
+            "sucesso",
+        )
+    except importacao.FormatoInvalidoError as erro:
+        flash(str(erro), "erro")
+    except Exception as erro:
+        flash(f"Erro ao importar o extrato: {erro}", "erro")
+    return redirect(url_for("importar"))
+
+
+@app.route("/importar/fatura", methods=["POST"], endpoint="importar_fatura_rota")
+def importar_fatura_rota():
+    arquivo = request.files.get("arquivo")
+    senha_manual = request.form.get("senha") or None
+    if not arquivo or not arquivo.filename:
+        flash("Selecione um arquivo de fatura (.pdf) antes de importar.", "erro")
+        return redirect(url_for("importar"))
+
+    try:
+        resultado = importacao.importar_fatura_upload(arquivo, DEFAULT_DB_PATH, senha_manual)
+        flash(
+            f"Fatura \"{resultado['nome_arquivo']}\" importada ({resultado['id_fatura']}): "
+            f"{resultado['inseridos']} lançamentos novos, {resultado['ignorados']} já existiam.",
+            "sucesso",
+        )
+    except importacao.FormatoInvalidoError as erro:
+        flash(str(erro), "erro")
+    except parse_fatura_cartao.SenhaNecessariaError as erro:
+        flash(str(erro), "erro")
+    except Exception as erro:
+        flash(f"Erro ao importar a fatura: {erro}", "erro")
+    return redirect(url_for("importar"))
+
+
+@app.route("/contas_bancarias", methods=["POST"], endpoint="criar_conta_bancaria_rota")
+def criar_conta_bancaria_rota():
+    form = request.form
+    conn = sqlite3.connect(DEFAULT_DB_PATH)
+    try:
+        cadastros.criar_conta_bancaria(
+            conn, form["banco"], form.get("agencia", ""), form.get("numero_conta", ""), form.get("apelido", ""),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect(url_for("importar"))
+
+
+@app.route("/contas_bancarias/<int:id>/excluir", methods=["POST"], endpoint="excluir_conta_bancaria_rota")
+def excluir_conta_bancaria_rota(id: int):
+    conn = sqlite3.connect(DEFAULT_DB_PATH)
+    try:
+        cadastros.excluir_conta_bancaria(conn, id)
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect(url_for("importar"))
+
+
+@app.route("/cartoes", methods=["POST"], endpoint="criar_cartao_rota")
+def criar_cartao_rota():
+    form = request.form
+    dia_fechamento = form.get("dia_fechamento") or None
+    dia_vencimento = form.get("dia_vencimento") or None
+    conn = sqlite3.connect(DEFAULT_DB_PATH)
+    try:
+        cadastros.criar_cartao(
+            conn, form["banco"], form.get("apelido", ""), form["final_cartao"],
+            int(dia_fechamento) if dia_fechamento else None,
+            int(dia_vencimento) if dia_vencimento else None,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect(url_for("importar"))
+
+
+@app.route("/cartoes/<int:id>/excluir", methods=["POST"], endpoint="excluir_cartao_rota")
+def excluir_cartao_rota(id: int):
+    conn = sqlite3.connect(DEFAULT_DB_PATH)
+    try:
+        cadastros.excluir_cartao(conn, id)
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect(url_for("importar"))
 
 
 if __name__ == "__main__":
