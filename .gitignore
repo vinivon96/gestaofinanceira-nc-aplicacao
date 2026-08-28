@@ -1,6 +1,7 @@
 # Banco de dados (dados financeiros reais)
 db/financeiro.db
 db/*.db-journal
+db/backups/
 
 # Dados reais de origem (extratos e faturas)
 dbextratos_reais/
