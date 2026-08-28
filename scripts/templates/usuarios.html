@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<title>Usuários — NC Decorações</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='estilo.css') }}">
+</head>
+<body>
+  <nav class="nav-principal">
+    <a href="{{ url_for('index') }}">Fluxo de caixa</a>
+    <a href="{{ url_for('compromissos') }}">Contas &amp; Dívidas</a>
+    <a href="{{ url_for('importar') }}">Importar</a>
+    <a href="{{ url_for('categorias') }}">Categorias</a>
+    <a href="{{ url_for('usuarios') }}" class="ativo">Usuários</a>
+  </nav>
+  <h1>Usuários</h1>
+  <p class="periodo">Contas individuais de acesso ao dashboard. A senha mestra do <code>.env</code> continua funcionando sempre, independente do que estiver aqui — essas contas são um acesso a mais por pessoa, sem distinção de permissão por ora.</p>
+
+  <div class="compromissos-topo">
+    <p class="dica" style="margin: 0;">Cada usuário tem acesso completo, igual à senha mestra.</p>
+    <div class="botoes-novo">
+      <button type="button" class="btn-abrir-drawer" onclick="abrirDrawer('drawer-usuario')">+ Novo usuário</button>
+    </div>
+  </div>
+
+  <div class="card card-compromissos">
+    {% if linhas %}
+    <div class="tabela-scroll">
+    <table>
+      <thead>
+        <tr><th>Nome</th><th>Usuário</th><th>Status</th><th>Ação</th></tr>
+      </thead>
+      <tbody>
+      {% for linha in linhas %}
+        <tr>
+          <td>{{ linha.nome }}</td>
+          <td>{{ linha.usuario }}</td>
+          <td><span class="badge badge-{{ 'ativo' if linha.ativo else 'inativo' }}">{{ 'Ativo' if linha.ativo else 'Inativo' }}</span></td>
+          <td>
+            <details class="opcoes-avancadas">
+              <summary>Editar</summary>
+              <form class="form-inline form-periodo-remocao" method="post" action="{{ url_for('editar_usuario_rota', id=linha.id) }}">
+                <label>Nome <input type="text" name="nome" value="{{ linha.nome }}" required></label>
+                <label>Nova senha <input type="password" name="nova_senha" placeholder="deixe em branco pra manter" autocomplete="new-password"></label>
+                <label><input type="checkbox" name="ativo" {{ 'checked' if linha.ativo else '' }}> Ativo</label>
+                <button type="submit">Salvar</button>
+              </form>
+            </details>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+      <p class="vazio">Nenhum usuário cadastrado ainda — o acesso continua funcionando pela senha mestra do .env.</p>
+    {% endif %}
+  </div>
+
+  <div class="drawer-overlay" id="drawer-overlay" onclick="fecharDrawers()"></div>
+
+  <aside class="drawer" id="drawer-usuario">
+    <div class="drawer-cabecalho">
+      <h2>Novo usuário</h2>
+      <button type="button" class="drawer-fechar" onclick="fecharDrawers()" aria-label="Fechar">&times;</button>
+    </div>
+    <form class="form-cadastro form-drawer" method="post" action="{{ url_for('criar_usuario_rota') }}">
+      <label class="campo-descricao">Nome
+        <input type="text" name="nome" placeholder="ex: Vinícius" required>
+      </label>
+      <label class="campo-descricao">Usuário (login)
+        <input type="text" name="usuario" placeholder="ex: vinicius" required autocomplete="off">
+      </label>
+      <label>Senha
+        <input type="password" name="senha" required autocomplete="new-password">
+      </label>
+      <button type="submit">+ Novo usuário</button>
+    </form>
+  </aside>
+
+  <script>
+    function abrirDrawer(id) {
+      document.getElementById(id).classList.add('aberto');
+      document.getElementById('drawer-overlay').classList.add('aberto');
+    }
+
+    function fecharDrawers() {
+      document.querySelectorAll('.drawer.aberto').forEach(function (d) { d.classList.remove('aberto'); });
+      document.getElementById('drawer-overlay').classList.remove('aberto');
+    }
+
+    document.addEventListener('keydown', function (evento) {
+      if (evento.key === 'Escape') fecharDrawers();
+    });
+  </script>
+</body>
+</html>

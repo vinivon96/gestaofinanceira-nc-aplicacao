@@ -42,6 +42,7 @@ import cadastros
 import compromissos
 import importacao
 import parse_fatura_cartao
+import usuarios
 from relatorio import (
     DEFAULT_DB_PATH,
     buscar_por_termo,
@@ -63,7 +64,7 @@ from relatorio import (
     saidas_por_contraparte,
     saidas_por_contraparte_detalhe,
 )
-from revisar_manual import carregar_categorias, criar_categoria, criar_regra
+from revisar_manual import carregar_categorias, criar_categoria, criar_regra, editar_categoria
 
 NOVA_CATEGORIA_SENTINELA = "__NOVA__"
 TIPO_PLANO_POR_TIPO_TRANSACAO = {"entrada": "receita", "saida": "despesa"}
@@ -89,11 +90,21 @@ def autenticacao_exigida() -> bool:
 
 
 def credenciais_validas(usuario: str | None, senha: str | None) -> bool:
+    """A senha mestra do .env sempre funciona (evita ficar trancado fora do
+    sistema); usuários cadastrados em `usuarios` (ver scripts/usuarios.py)
+    são contas adicionais por pessoa, verificadas contra o banco."""
     usuario_esperado = os.environ.get("DASHBOARD_USER", "")
     senha_esperada = os.environ.get("DASHBOARD_SENHA", "")
-    return bool(usuario_esperado and senha_esperada
-                and secrets.compare_digest(usuario or "", usuario_esperado)
-                and secrets.compare_digest(senha or "", senha_esperada))
+    if (usuario_esperado and senha_esperada
+            and secrets.compare_digest(usuario or "", usuario_esperado)
+            and secrets.compare_digest(senha or "", senha_esperada)):
+        return True
+
+    conn = sqlite3.connect(DEFAULT_DB_PATH)
+    try:
+        return usuarios.autenticar(conn, usuario, senha)
+    finally:
+        conn.close()
 
 
 @app.before_request
@@ -778,6 +789,91 @@ def excluir_cartao_rota(id: int):
     finally:
         conn.close()
     return redirect(url_for("importar"))
+
+
+TIPO_CATEGORIA_ROTULO = {
+    "receita": "Receita", "despesa": "Despesa", "movimentacao_interna": "Movimentação interna",
+}
+
+
+@app.route("/categorias", endpoint="categorias")
+def pagina_categorias():
+    conn = sqlite3.connect(DEFAULT_DB_PATH)
+    try:
+        linhas = [
+            {"codigo": codigo, "categoria": categoria, "tipo": tipo,
+             "tipo_rotulo": TIPO_CATEGORIA_ROTULO.get(tipo, tipo)}
+            for codigo, categoria, tipo in conn.execute(
+                "SELECT codigo, categoria, tipo FROM plano_de_contas "
+                "WHERE codigo != 'revisar_manual' ORDER BY tipo, categoria"
+            ).fetchall()
+        ]
+        return render_template("categorias.html", linhas=linhas)
+    finally:
+        conn.close()
+
+
+@app.route("/categorias", methods=["POST"], endpoint="criar_categoria_rota")
+def criar_categoria_rota():
+    form = request.form
+    conn = sqlite3.connect(DEFAULT_DB_PATH)
+    try:
+        criar_categoria(conn, form["nome"], form["tipo"])
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect(url_for("categorias"))
+
+
+@app.route("/categorias/<codigo>/editar", methods=["POST"], endpoint="editar_categoria_rota")
+def editar_categoria_rota(codigo: str):
+    form = request.form
+    conn = sqlite3.connect(DEFAULT_DB_PATH)
+    try:
+        editar_categoria(conn, codigo, form["nome"], form["tipo"])
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect(url_for("categorias"))
+
+
+@app.route("/usuarios", endpoint="usuarios")
+def pagina_usuarios():
+    conn = sqlite3.connect(DEFAULT_DB_PATH)
+    try:
+        linhas = [
+            {"id": id_, "nome": nome, "usuario": usuario, "ativo": bool(ativo)}
+            for id_, nome, usuario, ativo in usuarios.listar_usuarios(conn)
+        ]
+        return render_template("usuarios.html", linhas=linhas)
+    finally:
+        conn.close()
+
+
+@app.route("/usuarios", methods=["POST"], endpoint="criar_usuario_rota")
+def criar_usuario_rota():
+    form = request.form
+    conn = sqlite3.connect(DEFAULT_DB_PATH)
+    try:
+        usuarios.criar_usuario(conn, form["nome"], form["usuario"], form["senha"])
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect(url_for("usuarios"))
+
+
+@app.route("/usuarios/<int:id>/editar", methods=["POST"], endpoint="editar_usuario_rota")
+def editar_usuario_rota(id: int):
+    form = request.form
+    conn = sqlite3.connect(DEFAULT_DB_PATH)
+    try:
+        usuarios.editar_usuario(
+            conn, id, form["nome"], form.get("ativo") == "on", form.get("nova_senha") or None,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect(url_for("usuarios"))
 
 
 if __name__ == "__main__":

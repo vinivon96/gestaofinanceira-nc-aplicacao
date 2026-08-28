@@ -163,6 +163,20 @@ CREATE TABLE IF NOT EXISTS cartoes (
     ativo            INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1))
 );
 
+-- Usuários individuais do dashboard — complementa (não substitui) a senha
+-- mestra DASHBOARD_USER/DASHBOARD_SENHA do .env: a senha mestra continua
+-- funcionando sempre (evita ficar trancado fora do sistema), os usuários
+-- daqui são contas adicionais por pessoa. Sem distinção de permissão por
+-- ora (todo usuário ativo tem acesso completo, igual à senha mestra) — ver
+-- spec seção 14 se essa decisão precisar mudar no futuro.
+CREATE TABLE IF NOT EXISTS usuarios (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome         TEXT NOT NULL,
+    usuario      TEXT NOT NULL UNIQUE,
+    senha_hash   TEXT NOT NULL,
+    ativo        INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0, 1))
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_regras_classificacao_padrao ON regras_classificacao (padrao, tabela_alvo);
 CREATE INDEX IF NOT EXISTS idx_transacoes_data ON transacoes (data);
 CREATE INDEX IF NOT EXISTS idx_transacoes_tipo ON transacoes (tipo);

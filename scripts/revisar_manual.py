@@ -103,6 +103,16 @@ def criar_categoria(conn: sqlite3.Connection, nome: str, tipo: str) -> str:
     return codigo
 
 
+def editar_categoria(conn: sqlite3.Connection, codigo: str, nome: str, tipo: str) -> None:
+    """Atualiza nome/tipo de uma categoria já existente — o `codigo` (slug)
+    não muda, já que é referenciado como chave estrangeira por transacoes,
+    lancamentos_fatura, regras_classificacao e os compromissos financeiros."""
+    conn.execute(
+        "UPDATE plano_de_contas SET categoria = ?, tipo = ? WHERE codigo = ?",
+        (nome.strip(), tipo, codigo),
+    )
+
+
 def criar_regra(conn: sqlite3.Connection, padrao: str, categoria_destino: str, tabela_alvo: str) -> None:
     prioridade = conn.execute(
         "SELECT COALESCE(MAX(prioridade), 0) + 1 FROM regras_classificacao"

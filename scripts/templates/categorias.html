@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<title>Categorias — NC Decorações</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='estilo.css') }}">
+</head>
+<body>
+  <nav class="nav-principal">
+    <a href="{{ url_for('index') }}">Fluxo de caixa</a>
+    <a href="{{ url_for('compromissos') }}">Contas &amp; Dívidas</a>
+    <a href="{{ url_for('importar') }}">Importar</a>
+    <a href="{{ url_for('categorias') }}" class="ativo">Categorias</a>
+    <a href="{{ url_for('usuarios') }}">Usuários</a>
+  </nav>
+  <h1>Categorias</h1>
+  <p class="periodo">Plano de contas usado pra classificar entradas e saídas — mesma lista usada pelas regras automáticas e pela reclassificação manual.</p>
+
+  <div class="compromissos-topo">
+    <p class="dica" style="margin: 0;">O código de cada categoria não muda depois de criada — só o nome e o tipo podem ser editados.</p>
+    <div class="botoes-novo">
+      <button type="button" class="btn-abrir-drawer" onclick="abrirDrawer('drawer-categoria')">+ Nova categoria</button>
+    </div>
+  </div>
+
+  <div class="card card-filtros">
+    <div class="filtros-grid">
+      <label>Tipo
+        <select id="filtro-tipo-categoria" onchange="aplicarFiltrosCategorias()">
+          <option value="">Todos</option>
+          <option value="receita">Receita</option>
+          <option value="despesa">Despesa</option>
+          <option value="movimentacao_interna">Movimentação interna</option>
+        </select>
+      </label>
+      <label>Nome / código
+        <input type="text" id="filtro-nome-categoria" placeholder="buscar..." oninput="aplicarFiltrosCategorias()">
+      </label>
+      <div class="filtros-acoes">
+        <button type="button" onclick="aplicarFiltrosCategorias()">Aplicar</button>
+        <button type="button" onclick="limparFiltrosCategorias()">Limpar filtros</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card card-compromissos">
+    {% if linhas %}
+    <div class="tabela-scroll">
+    <table id="tabela-categorias">
+      <thead>
+        <tr><th>Categoria</th><th>Código</th><th>Tipo</th><th>Ação</th></tr>
+      </thead>
+      <tbody>
+      {% for linha in linhas %}
+        <tr data-tipo="{{ linha.tipo }}" data-nome="{{ (linha.categoria ~ ' ' ~ linha.codigo)|lower }}">
+          <td>{{ linha.categoria }}</td>
+          <td>{{ linha.codigo }}</td>
+          <td><span class="badge badge-{{ linha.tipo }}">{{ linha.tipo_rotulo }}</span></td>
+          <td>
+            <details class="opcoes-avancadas">
+              <summary>Editar</summary>
+              <form class="form-inline form-periodo-remocao" method="post" action="{{ url_for('editar_categoria_rota', codigo=linha.codigo) }}">
+                <label>Nome <input type="text" name="nome" value="{{ linha.categoria }}" required></label>
+                <label>Tipo
+                  <select name="tipo">
+                    <option value="receita" {{ 'selected' if linha.tipo == 'receita' else '' }}>Receita</option>
+                    <option value="despesa" {{ 'selected' if linha.tipo == 'despesa' else '' }}>Despesa</option>
+                    <option value="movimentacao_interna" {{ 'selected' if linha.tipo == 'movimentacao_interna' else '' }}>Movimentação interna</option>
+                  </select>
+                </label>
+                <button type="submit">Salvar</button>
+              </form>
+            </details>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="vazio" id="filtro-sem-resultado-categorias" style="display:none;">Nenhuma categoria para os filtros aplicados.</p>
+    {% else %}
+      <p class="vazio">Nenhuma categoria cadastrada.</p>
+    {% endif %}
+  </div>
+
+  <div class="drawer-overlay" id="drawer-overlay" onclick="fecharDrawers()"></div>
+
+  <aside class="drawer" id="drawer-categoria">
+    <div class="drawer-cabecalho">
+      <h2>Nova categoria</h2>
+      <button type="button" class="drawer-fechar" onclick="fecharDrawers()" aria-label="Fechar">&times;</button>
+    </div>
+    <form class="form-cadastro form-drawer" method="post" action="{{ url_for('criar_categoria_rota') }}">
+      <label class="campo-descricao">Nome
+        <input type="text" name="nome" placeholder="ex: Contabilidade" required>
+      </label>
+      <label>Tipo
+        <select name="tipo" required>
+          <option value="receita">Receita</option>
+          <option value="despesa" selected>Despesa</option>
+          <option value="movimentacao_interna">Movimentação interna</option>
+        </select>
+      </label>
+      <button type="submit">+ Nova categoria</button>
+    </form>
+  </aside>
+
+  <script>
+    function abrirDrawer(id) {
+      document.getElementById(id).classList.add('aberto');
+      document.getElementById('drawer-overlay').classList.add('aberto');
+    }
+
+    function fecharDrawers() {
+      document.querySelectorAll('.drawer.aberto').forEach(function (d) { d.classList.remove('aberto'); });
+      document.getElementById('drawer-overlay').classList.remove('aberto');
+    }
+
+    document.addEventListener('keydown', function (evento) {
+      if (evento.key === 'Escape') fecharDrawers();
+    });
+
+    function aplicarFiltrosCategorias() {
+      var tipo = document.getElementById('filtro-tipo-categoria').value;
+      var nome = document.getElementById('filtro-nome-categoria').value.trim().toLowerCase();
+
+      var linhas = document.querySelectorAll('#tabela-categorias tbody tr');
+      var visiveis = 0;
+
+      linhas.forEach(function (linha) {
+        var ok = true;
+        if (tipo && linha.dataset.tipo !== tipo) ok = false;
+        if (ok && nome && linha.dataset.nome.indexOf(nome) === -1) ok = false;
+
+        linha.style.display = ok ? '' : 'none';
+        if (ok) visiveis++;
+      });
+
+      var aviso = document.getElementById('filtro-sem-resultado-categorias');
+      if (aviso) aviso.style.display = (linhas.length > 0 && visiveis === 0) ? '' : 'none';
+    }
+
+    function limparFiltrosCategorias() {
+      document.getElementById('filtro-tipo-categoria').value = '';
+      document.getElementById('filtro-nome-categoria').value = '';
+      aplicarFiltrosCategorias();
+    }
+  </script>
+</body>
+</html>
